@@ -48,12 +48,20 @@ OLIB_API olib_serializer_t* olib_serializer_new(olib_serializer_config_t* config
     }
 
     serializer->config = *config;
+
+    if (serializer->config.init_ctx) {
+        serializer->config.init_ctx(serializer->config.user_data);
+    }
+
     return serializer;
 }
 
 OLIB_API void olib_serializer_free(olib_serializer_t* serializer) {
     if (!serializer) {
         return;
+    }
+    if (serializer->config.free_ctx) {
+        serializer->config.free_ctx(serializer->config.user_data);
     }
     olib_free(serializer);
 }
@@ -280,24 +288,73 @@ OLIB_API bool olib_serializer_write(olib_serializer_t* serializer, olib_object_t
     if (!serializer || !obj) {
         return false;
     }
-    // The callbacks are responsible for writing to a buffer accessible via user_data
-    // This function just triggers the serialization
-    // The user must set up user_data to collect the output
-    return olib_serializer_write_object(serializer, obj);
+    if (serializer->config.init_write) {
+        if (!serializer->config.init_write(serializer->config.user_data)) {
+            return false;
+        }
+    }
+    if (!olib_serializer_write_object(serializer, obj)) {
+        return false;
+    }
+    if (serializer->config.finish_write) {
+        return serializer->config.finish_write(serializer->config.user_data, out_data, out_size);
+    }
+    return true;
 }
 
 OLIB_API bool olib_serializer_write_string(olib_serializer_t* serializer, olib_object_t* obj, char** out_string) {
     if (!serializer || !obj) {
         return false;
     }
-    return olib_serializer_write_object(serializer, obj);
+    if (serializer->config.init_write) {
+        if (!serializer->config.init_write(serializer->config.user_data)) {
+            return false;
+        }
+    }
+    if (!olib_serializer_write_object(serializer, obj)) {
+        return false;
+    }
+    if (serializer->config.finish_write && out_string) {
+        size_t size;
+        uint8_t* data;
+        if (!serializer->config.finish_write(serializer->config.user_data, &data, &size)) {
+            return false;
+        }
+        // Add null terminator for string output
+        char* str = olib_realloc(data, size + 1);
+        if (!str) {
+            olib_free(data);
+            return false;
+        }
+        str[size] = '\0';
+        *out_string = str;
+    }
+    return true;
 }
 
 OLIB_API bool olib_serializer_write_file(olib_serializer_t* serializer, olib_object_t* obj, FILE* file) {
     if (!serializer || !obj || !file) {
         return false;
     }
-    return olib_serializer_write_object(serializer, obj);
+    if (serializer->config.init_write) {
+        if (!serializer->config.init_write(serializer->config.user_data)) {
+            return false;
+        }
+    }
+    if (!olib_serializer_write_object(serializer, obj)) {
+        return false;
+    }
+    if (serializer->config.finish_write) {
+        uint8_t* data;
+        size_t size;
+        if (!serializer->config.finish_write(serializer->config.user_data, &data, &size)) {
+            return false;
+        }
+        size_t written = fwrite(data, 1, size, file);
+        olib_free(data);
+        return written == size;
+    }
+    return true;
 }
 
 OLIB_API bool olib_serializer_write_file_path(olib_serializer_t* serializer, olib_object_t* obj, const char* file_path) {
@@ -321,23 +378,67 @@ OLIB_API olib_object_t* olib_serializer_read(olib_serializer_t* serializer, cons
     if (!serializer || !data || size == 0) {
         return NULL;
     }
-    // The callbacks are responsible for reading from a buffer accessible via user_data
-    // The user must set up user_data with the input data before calling
-    return olib_serializer_read_object(serializer);
+    if (serializer->config.init_read) {
+        if (!serializer->config.init_read(serializer->config.user_data, data, size)) {
+            return NULL;
+        }
+    }
+    olib_object_t* result = olib_serializer_read_object(serializer);
+    if (serializer->config.finish_read) {
+        serializer->config.finish_read(serializer->config.user_data);
+    }
+    return result;
 }
 
 OLIB_API olib_object_t* olib_serializer_read_string(olib_serializer_t* serializer, const char* string) {
     if (!serializer || !string) {
         return NULL;
     }
-    return olib_serializer_read_object(serializer);
+    if (serializer->config.init_read) {
+        if (!serializer->config.init_read(serializer->config.user_data, (const uint8_t*)string, strlen(string))) {
+            return NULL;
+        }
+    }
+    olib_object_t* result = olib_serializer_read_object(serializer);
+    if (serializer->config.finish_read) {
+        serializer->config.finish_read(serializer->config.user_data);
+    }
+    return result;
 }
 
 OLIB_API olib_object_t* olib_serializer_read_file(olib_serializer_t* serializer, FILE* file) {
     if (!serializer || !file) {
         return NULL;
     }
-    return olib_serializer_read_object(serializer);
+    // Read entire file into buffer
+    long start = ftell(file);
+    fseek(file, 0, SEEK_END);
+    long end = ftell(file);
+    fseek(file, start, SEEK_SET);
+    size_t size = (size_t)(end - start);
+    if (size == 0) {
+        return NULL;
+    }
+    uint8_t* data = olib_malloc(size);
+    if (!data) {
+        return NULL;
+    }
+    if (fread(data, 1, size, file) != size) {
+        olib_free(data);
+        return NULL;
+    }
+    if (serializer->config.init_read) {
+        if (!serializer->config.init_read(serializer->config.user_data, data, size)) {
+            olib_free(data);
+            return NULL;
+        }
+    }
+    olib_object_t* result = olib_serializer_read_object(serializer);
+    if (serializer->config.finish_read) {
+        serializer->config.finish_read(serializer->config.user_data);
+    }
+    olib_free(data);
+    return result;
 }
 
 OLIB_API olib_object_t* olib_serializer_read_file_path(olib_serializer_t* serializer, const char* file_path) {
