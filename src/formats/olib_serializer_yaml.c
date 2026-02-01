@@ -22,9 +22,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-#pragma once
+#include <olib/olib_formats.h>
 
-#include "olib/olib_base.h"
-#include "olib/olib_formats.h"
-#include "olib/olib_object.h"
-#include "olib/olib_serializer.h"
+OLIB_API olib_serializer_t* olib_serializer_new_yaml() {
+  return NULL;
+}
