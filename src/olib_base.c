@@ -22,6 +22,47 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-#pragma once
+#include <olib/olib_base.h>
+#include <stdlib.h>
 
-#include "olib/olib_base.h" 
+// Stored function pointers for memory functions
+// They default to the standard library functions
+static olib_malloc_fn g_malloc_fn = malloc;
+static olib_free_fn g_free_fn = free;
+static olib_calloc_fn g_calloc_fn = calloc;
+static olib_realloc_fn g_realloc_fn = realloc;
+
+OLIB_API void* olib_malloc(size_t size) {
+    return g_malloc_fn(size);
+}
+
+OLIB_API void  olib_free(void* ptr) {
+    g_free_fn(ptr);
+}
+
+OLIB_API void* olib_calloc(size_t num, size_t size) {
+    return g_calloc_fn(num, size);
+}
+
+OLIB_API void* olib_realloc(void* ptr, size_t new_size) {
+    return g_realloc_fn(ptr, new_size);
+}
+
+OLIB_API void olib_set_memory_fns(
+  olib_malloc_fn malloc_fn, 
+  olib_free_fn free_fn, 
+  olib_calloc_fn calloc_fn, 
+  olib_realloc_fn realloc_fn) {
+    if (malloc_fn) {
+        g_malloc_fn = malloc_fn;
+    }
+    if (free_fn) {
+        g_free_fn = free_fn;
+    }
+    if (calloc_fn) {
+        g_calloc_fn = calloc_fn;
+    }
+    if (realloc_fn) {
+        g_realloc_fn = realloc_fn;
+    }
+  }
