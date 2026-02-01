@@ -23,3 +23,36 @@ SOFTWARE.
 */
 
 #pragma once
+
+#include "olib_object.h"
+
+// #############################################################################
+OLIB_HEADER_BEGIN;
+// #############################################################################
+
+typedef struct olib_serializer_t olib_serializer_t;
+
+typedef struct olib_serializer_config_t {
+  // TODO: Add configuration callbacks
+} olib_serializer_config_t;
+
+// Serializer management
+OLIB_API olib_serializer_t* olib_serializer_new(olib_serializer_config_t* config);
+OLIB_API void olib_serializer_free(olib_serializer_t* serializer);
+
+// #############################################################################
+// Writing objects
+OLIB_API bool olib_serializer_write(olib_serializer_t* serializer, olib_object_t* obj, uint8_t** out_data, size_t* out_size);
+OLIB_API bool olib_serializer_write_string(olib_serializer_t* serializer, olib_object_t* obj, char** out_string);
+OLIB_API bool olib_serializer_write_file(olib_serializer_t* serializer, olib_object_t* obj, FILE* file);
+OLIB_API bool olib_serializer_write_file_path(olib_serializer_t* serializer, olib_object_t* obj, const char* file_path);
+
+// Reading objects
+OLIB_API olib_object_t* olib_serializer_read(olib_serializer_t* serializer, const uint8_t* data, size_t size);
+OLIB_API olib_object_t* olib_serializer_read_string(olib_serializer_t* serializer, const char* string);
+OLIB_API olib_object_t* olib_serializer_read_file(olib_serializer_t* serializer, FILE* file);
+OLIB_API olib_object_t* olib_serializer_read_file_path(olib_serializer_t* serializer, const char* file_path);
+
+// #############################################################################
+OLIB_HEADER_END;
+// #############################################################################

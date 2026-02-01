@@ -55,6 +55,13 @@ struct olib_object_t {
             size_t size;
             size_t capacity;
         } object;
+        // Matrix type
+        struct {
+            double* data;
+            size_t* dims;
+            size_t ndims;
+            size_t total_size;
+        } matrix;
     } data;
 };
 
@@ -70,6 +77,7 @@ static const char* g_type_strings[OLIB_OBJECT_TYPE_MAX] = {
     "float",
     "string",
     "bool",
+    "matrix",
 };
 
 OLIB_API const char* olib_object_type_to_string(olib_object_type_t type) {
@@ -169,6 +177,26 @@ OLIB_API olib_object_t* olib_object_dupe(olib_object_t* obj) {
                 }
             }
             break;
+        case OLIB_OBJECT_TYPE_MATRIX:
+            copy->data.matrix.ndims = obj->data.matrix.ndims;
+            copy->data.matrix.total_size = obj->data.matrix.total_size;
+            if (obj->data.matrix.ndims > 0) {
+                copy->data.matrix.dims = olib_malloc(obj->data.matrix.ndims * sizeof(size_t));
+                if (!copy->data.matrix.dims) {
+                    olib_object_free(copy);
+                    return NULL;
+                }
+                memcpy(copy->data.matrix.dims, obj->data.matrix.dims, obj->data.matrix.ndims * sizeof(size_t));
+            }
+            if (obj->data.matrix.total_size > 0) {
+                copy->data.matrix.data = olib_malloc(obj->data.matrix.total_size * sizeof(double));
+                if (!copy->data.matrix.data) {
+                    olib_object_free(copy);
+                    return NULL;
+                }
+                memcpy(copy->data.matrix.data, obj->data.matrix.data, obj->data.matrix.total_size * sizeof(double));
+            }
+            break;
         default:
             break;
     }
@@ -202,6 +230,14 @@ OLIB_API void olib_object_free(olib_object_t* obj) {
             }
             if (obj->data.object.entries) {
                 olib_free(obj->data.object.entries);
+            }
+            break;
+        case OLIB_OBJECT_TYPE_MATRIX:
+            if (obj->data.matrix.dims) {
+                olib_free(obj->data.matrix.dims);
+            }
+            if (obj->data.matrix.data) {
+                olib_free(obj->data.matrix.data);
             }
             break;
         default:
@@ -544,5 +580,142 @@ OLIB_API bool olib_object_set_bool(olib_object_t* obj, bool value) {
         return false;
     }
     obj->data.bool_val = value;
+    return true;
+}
+
+// #############################################################################
+// Matrix operations
+// #############################################################################
+
+OLIB_API olib_object_t* olib_object_matrix_new(size_t ndims, const size_t* dims) {
+    if (ndims == 0 || !dims) {
+        return NULL;
+    }
+
+    size_t total_size = 1;
+    for (size_t i = 0; i < ndims; i++) {
+        if (dims[i] == 0) {
+            return NULL;
+        }
+        total_size *= dims[i];
+    }
+
+    olib_object_t* obj = olib_calloc(1, sizeof(olib_object_t));
+    if (!obj) {
+        return NULL;
+    }
+    obj->type = OLIB_OBJECT_TYPE_MATRIX;
+
+    obj->data.matrix.dims = olib_malloc(ndims * sizeof(size_t));
+    if (!obj->data.matrix.dims) {
+        olib_free(obj);
+        return NULL;
+    }
+    memcpy(obj->data.matrix.dims, dims, ndims * sizeof(size_t));
+
+    obj->data.matrix.data = olib_calloc(total_size, sizeof(double));
+    if (!obj->data.matrix.data) {
+        olib_free(obj->data.matrix.dims);
+        olib_free(obj);
+        return NULL;
+    }
+
+    obj->data.matrix.ndims = ndims;
+    obj->data.matrix.total_size = total_size;
+
+    return obj;
+}
+
+OLIB_API size_t olib_object_matrix_ndims(olib_object_t* obj) {
+    if (!obj || obj->type != OLIB_OBJECT_TYPE_MATRIX) {
+        return 0;
+    }
+    return obj->data.matrix.ndims;
+}
+
+OLIB_API size_t olib_object_matrix_dim(olib_object_t* obj, size_t axis) {
+    if (!obj || obj->type != OLIB_OBJECT_TYPE_MATRIX) {
+        return 0;
+    }
+    if (axis >= obj->data.matrix.ndims) {
+        return 0;
+    }
+    return obj->data.matrix.dims[axis];
+}
+
+OLIB_API const size_t* olib_object_matrix_dims(olib_object_t* obj) {
+    if (!obj || obj->type != OLIB_OBJECT_TYPE_MATRIX) {
+        return NULL;
+    }
+    return obj->data.matrix.dims;
+}
+
+OLIB_API size_t olib_object_matrix_total_size(olib_object_t* obj) {
+    if (!obj || obj->type != OLIB_OBJECT_TYPE_MATRIX) {
+        return 0;
+    }
+    return obj->data.matrix.total_size;
+}
+
+static size_t olib_object_matrix_calc_index(olib_object_t* obj, const size_t* indices) {
+    size_t index = 0;
+    size_t multiplier = 1;
+    for (size_t i = obj->data.matrix.ndims; i > 0; i--) {
+        size_t dim_idx = i - 1;
+        if (indices[dim_idx] >= obj->data.matrix.dims[dim_idx]) {
+            return (size_t)-1;
+        }
+        index += indices[dim_idx] * multiplier;
+        multiplier *= obj->data.matrix.dims[dim_idx];
+    }
+    return index;
+}
+
+OLIB_API double olib_object_matrix_get(olib_object_t* obj, const size_t* indices) {
+    if (!obj || obj->type != OLIB_OBJECT_TYPE_MATRIX || !indices) {
+        return 0.0;
+    }
+    size_t index = olib_object_matrix_calc_index(obj, indices);
+    if (index == (size_t)-1) {
+        return 0.0;
+    }
+    return obj->data.matrix.data[index];
+}
+
+OLIB_API double* olib_object_matrix_data(olib_object_t* obj) {
+    if (!obj || obj->type != OLIB_OBJECT_TYPE_MATRIX) {
+        return NULL;
+    }
+    return obj->data.matrix.data;
+}
+
+OLIB_API bool olib_object_matrix_set(olib_object_t* obj, const size_t* indices, double value) {
+    if (!obj || obj->type != OLIB_OBJECT_TYPE_MATRIX || !indices) {
+        return false;
+    }
+    size_t index = olib_object_matrix_calc_index(obj, indices);
+    if (index == (size_t)-1) {
+        return false;
+    }
+    obj->data.matrix.data[index] = value;
+    return true;
+}
+
+OLIB_API bool olib_object_matrix_fill(olib_object_t* obj, double value) {
+    if (!obj || obj->type != OLIB_OBJECT_TYPE_MATRIX) {
+        return false;
+    }
+    for (size_t i = 0; i < obj->data.matrix.total_size; i++) {
+        obj->data.matrix.data[i] = value;
+    }
+    return true;
+}
+
+OLIB_API bool olib_object_matrix_set_data(olib_object_t* obj, const double* data, size_t count) {
+    if (!obj || obj->type != OLIB_OBJECT_TYPE_MATRIX || !data) {
+        return false;
+    }
+    size_t copy_count = count < obj->data.matrix.total_size ? count : obj->data.matrix.total_size;
+    memcpy(obj->data.matrix.data, data, copy_count * sizeof(double));
     return true;
 }

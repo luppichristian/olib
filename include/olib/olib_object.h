@@ -38,6 +38,7 @@ typedef enum olib_object_type_t {
   OLIB_OBJECT_TYPE_FLOAT,
   OLIB_OBJECT_TYPE_STRING,
   OLIB_OBJECT_TYPE_BOOL,
+  OLIB_OBJECT_TYPE_MATRIX,
   OLIB_OBJECT_TYPE_MAX,
 } olib_object_type_t;
 
@@ -98,6 +99,24 @@ OLIB_API bool olib_object_set_uint(olib_object_t* obj, uint64_t value);
 OLIB_API bool olib_object_set_float(olib_object_t* obj, double value);
 OLIB_API bool olib_object_set_string(olib_object_t* obj, const char* value);
 OLIB_API bool olib_object_set_bool(olib_object_t* obj, bool value);
+
+// #############################################################################
+
+// Matrix creation (use this instead of olib_object_new for matrices)
+OLIB_API olib_object_t* olib_object_matrix_new(size_t ndims, const size_t* dims);
+
+// Matrix getters
+OLIB_API size_t olib_object_matrix_ndims(olib_object_t* obj);
+OLIB_API size_t olib_object_matrix_dim(olib_object_t* obj, size_t axis);
+OLIB_API const size_t* olib_object_matrix_dims(olib_object_t* obj);
+OLIB_API size_t olib_object_matrix_total_size(olib_object_t* obj);
+OLIB_API double olib_object_matrix_get(olib_object_t* obj, const size_t* indices);
+OLIB_API double* olib_object_matrix_data(olib_object_t* obj);
+
+// Matrix setters
+OLIB_API bool olib_object_matrix_set(olib_object_t* obj, const size_t* indices, double value);
+OLIB_API bool olib_object_matrix_fill(olib_object_t* obj, double value);
+OLIB_API bool olib_object_matrix_set_data(olib_object_t* obj, const double* data, size_t count);
 
 // #############################################################################
 OLIB_HEADER_END;
