@@ -78,6 +78,8 @@ OLIB_API bool olib_object_array_pop(olib_object_t* obj);
 OLIB_API size_t olib_object_struct_size(olib_object_t* obj);
 OLIB_API bool olib_object_struct_has(olib_object_t* obj, const char* key);
 OLIB_API olib_object_t* olib_object_struct_get(olib_object_t* obj, const char* key);
+OLIB_API const char* olib_object_struct_key_at(olib_object_t* obj, size_t index);
+OLIB_API olib_object_t* olib_object_struct_value_at(olib_object_t* obj, size_t index);
 
 // Struct setters
 OLIB_API bool olib_object_struct_add(olib_object_t* obj, const char* key, olib_object_t* value);  // Fails if key exists

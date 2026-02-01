@@ -33,7 +33,34 @@ OLIB_HEADER_BEGIN;
 typedef struct olib_serializer_t olib_serializer_t;
 
 typedef struct olib_serializer_config_t {
-  // TODO: Add configuration callbacks
+  void* user_data;
+
+  // Write callbacks (return false on error)
+  bool (*write_int)(void* ctx, int64_t value);
+  bool (*write_uint)(void* ctx, uint64_t value);
+  bool (*write_float)(void* ctx, double value);
+  bool (*write_string)(void* ctx, const char* value);
+  bool (*write_bool)(void* ctx, bool value);
+  bool (*write_array_begin)(void* ctx, size_t size);
+  bool (*write_array_end)(void* ctx);
+  bool (*write_struct_begin)(void* ctx);
+  bool (*write_struct_key)(void* ctx, const char* key);
+  bool (*write_struct_end)(void* ctx);
+  bool (*write_matrix)(void* ctx, size_t ndims, const size_t* dims, const double* data);
+
+  // Read callbacks (return false on error or end-of-container)
+  olib_object_type_t (*read_peek)(void* ctx);  // Peek next type without consuming
+  bool (*read_int)(void* ctx, int64_t* value);
+  bool (*read_uint)(void* ctx, uint64_t* value);
+  bool (*read_float)(void* ctx, double* value);
+  bool (*read_string)(void* ctx, const char** value);  // Returns pointer, valid until next read
+  bool (*read_bool)(void* ctx, bool* value);
+  bool (*read_array_begin)(void* ctx, size_t* size);
+  bool (*read_array_end)(void* ctx);
+  bool (*read_struct_begin)(void* ctx);
+  bool (*read_struct_key)(void* ctx, const char** key);  // Returns false when no more keys
+  bool (*read_struct_end)(void* ctx);
+  bool (*read_matrix)(void* ctx, size_t* ndims, size_t** dims, double** data);  // Caller frees dims/data
 } olib_serializer_config_t;
 
 // Serializer management
@@ -41,6 +68,7 @@ OLIB_API olib_serializer_t* olib_serializer_new(olib_serializer_config_t* config
 OLIB_API void olib_serializer_free(olib_serializer_t* serializer);
 
 // #############################################################################
+
 // Writing objects
 OLIB_API bool olib_serializer_write(olib_serializer_t* serializer, olib_object_t* obj, uint8_t** out_data, size_t* out_size);
 OLIB_API bool olib_serializer_write_string(olib_serializer_t* serializer, olib_object_t* obj, char** out_string);

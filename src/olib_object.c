@@ -419,6 +419,26 @@ OLIB_API olib_object_t* olib_object_struct_get(olib_object_t* obj, const char* k
     return entry ? entry->value : NULL;
 }
 
+OLIB_API const char* olib_object_struct_key_at(olib_object_t* obj, size_t index) {
+    if (!obj || obj->type != OLIB_OBJECT_TYPE_STRUCT) {
+        return NULL;
+    }
+    if (index >= obj->data.object.size) {
+        return NULL;
+    }
+    return obj->data.object.entries[index].key;
+}
+
+OLIB_API olib_object_t* olib_object_struct_value_at(olib_object_t* obj, size_t index) {
+    if (!obj || obj->type != OLIB_OBJECT_TYPE_STRUCT) {
+        return NULL;
+    }
+    if (index >= obj->data.object.size) {
+        return NULL;
+    }
+    return obj->data.object.entries[index].value;
+}
+
 static bool olib_object_struct_grow(olib_object_t* obj, size_t min_capacity) {
     if (obj->data.object.capacity >= min_capacity) {
         return true;
