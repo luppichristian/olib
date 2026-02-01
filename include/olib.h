@@ -26,5 +26,6 @@ SOFTWARE.
 
 #include "olib/olib_base.h"
 #include "olib/olib_formats.h"
+#include "olib/olib_helpers.h"
 #include "olib/olib_object.h"
 #include "olib/olib_serializer.h"
