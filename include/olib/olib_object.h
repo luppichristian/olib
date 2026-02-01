@@ -1,0 +1,104 @@
+/*
+MIT License
+
+Copyright (c) 2026 Christian Luppi
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+*/
+
+#pragma once
+
+#include "olib_base.h"
+
+// #############################################################################
+OLIB_HEADER_BEGIN;
+// #############################################################################
+
+typedef enum olib_object_type_t {
+  OLIB_OBJECT_TYPE_STRUCT,
+  OLIB_OBJECT_TYPE_ARRAY,
+  OLIB_OBJECT_TYPE_INT,
+  OLIB_OBJECT_TYPE_UINT,
+  OLIB_OBJECT_TYPE_FLOAT,
+  OLIB_OBJECT_TYPE_STRING,
+  OLIB_OBJECT_TYPE_BOOL,
+  OLIB_OBJECT_TYPE_MAX,
+} olib_object_type_t;
+
+OLIB_API const char* olib_object_type_to_string(olib_object_type_t type);
+
+// #############################################################################
+
+typedef struct olib_object_t olib_object_t;
+
+// Object creation and management
+OLIB_API olib_object_t* olib_object_new(olib_object_type_t type);  // Value is empty / zero-initialized
+OLIB_API olib_object_t* olib_object_dupe(olib_object_t* obj);
+OLIB_API void olib_object_free(olib_object_t* obj);
+
+// Helper getters
+OLIB_API olib_object_type_t olib_object_get_type(olib_object_t* obj);
+OLIB_API bool olib_object_is_type(olib_object_t* obj, olib_object_type_t type);
+OLIB_API bool olib_object_is_value(olib_object_t* obj);
+OLIB_API bool olib_object_is_container(olib_object_t* obj);
+
+// #############################################################################
+
+// Array getters
+OLIB_API size_t olib_object_array_size(olib_object_t* obj);
+OLIB_API olib_object_t* olib_object_array_get(olib_object_t* obj, size_t index);
+
+// Array setters
+OLIB_API bool olib_object_array_set(olib_object_t* obj, size_t index, olib_object_t* value);
+OLIB_API bool olib_object_array_insert(olib_object_t* obj, size_t index, olib_object_t* value);
+OLIB_API bool olib_object_array_remove(olib_object_t* obj, size_t index);
+OLIB_API bool olib_object_array_push(olib_object_t* obj, olib_object_t* value);
+OLIB_API bool olib_object_array_pop(olib_object_t* obj);
+
+// #############################################################################
+
+// Struct getters
+OLIB_API size_t olib_object_struct_size(olib_object_t* obj);
+OLIB_API bool olib_object_struct_has(olib_object_t* obj, const char* key);
+OLIB_API olib_object_t* olib_object_struct_get(olib_object_t* obj, const char* key);
+
+// Struct setters
+OLIB_API bool olib_object_struct_add(olib_object_t* obj, const char* key, olib_object_t* value);  // Fails if key exists
+OLIB_API bool olib_object_struct_set(olib_object_t* obj, const char* key, olib_object_t* value);  // Overwrites existing key, if it does not exist it is created
+OLIB_API bool olib_object_struct_remove(olib_object_t* obj, const char* key);
+
+// #############################################################################
+
+// Value getters
+OLIB_API int64_t olib_object_get_int(olib_object_t* obj);
+OLIB_API uint64_t olib_object_get_uint(olib_object_t* obj);
+OLIB_API double olib_object_get_float(olib_object_t* obj);
+OLIB_API const char* olib_object_get_string(olib_object_t* obj);
+OLIB_API bool olib_object_get_bool(olib_object_t* obj);
+
+// Value setters
+OLIB_API bool olib_object_set_int(olib_object_t* obj, int64_t value);
+OLIB_API bool olib_object_set_uint(olib_object_t* obj, uint64_t value);
+OLIB_API bool olib_object_set_float(olib_object_t* obj, double value);
+OLIB_API bool olib_object_set_string(olib_object_t* obj, const char* value);
+OLIB_API bool olib_object_set_bool(olib_object_t* obj, bool value);
+
+// #############################################################################
+OLIB_HEADER_END;
+// #############################################################################
