@@ -130,15 +130,6 @@ static bool olib_serializer_write_object(olib_serializer_t* serializer, olib_obj
             }
             return cfg->write_struct_end(ctx);
         }
-
-        case OLIB_OBJECT_TYPE_MATRIX: {
-            if (!cfg->write_matrix) return false;
-            size_t ndims = olib_object_matrix_ndims(obj);
-            const size_t* dims = olib_object_matrix_dims(obj);
-            const double* data = olib_object_matrix_data(obj);
-            return cfg->write_matrix(ctx, ndims, dims, data);
-        }
-
         default:
             return false;
     }
@@ -274,25 +265,6 @@ static olib_object_t* olib_serializer_read_object(olib_serializer_t* serializer)
                 olib_object_free(obj);
                 return NULL;
             }
-            return obj;
-        }
-
-        case OLIB_OBJECT_TYPE_MATRIX: {
-            if (!cfg->read_matrix) return NULL;
-            size_t ndims;
-            size_t* dims;
-            double* data;
-            if (!cfg->read_matrix(ctx, &ndims, &dims, &data)) return NULL;
-            obj = olib_object_matrix_new(ndims, dims);
-            if (!obj) {
-                olib_free(dims);
-                olib_free(data);
-                return NULL;
-            }
-            size_t total = olib_object_matrix_total_size(obj);
-            olib_object_matrix_set_data(obj, data, total);
-            olib_free(dims);
-            olib_free(data);
             return obj;
         }
 

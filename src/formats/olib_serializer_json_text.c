@@ -358,64 +358,6 @@ static bool json_write_struct_end(void* ctx) {
   return json_write_char(c, '}');
 }
 
-static bool json_write_matrix(void* ctx, size_t ndims, const size_t* dims, const double* data) {
-  json_ctx_t* c = (json_ctx_t*)ctx;
-
-  if (!json_write_value_prefix(c)) return false;
-
-  // Calculate total size
-  size_t total = 1;
-  for (size_t i = 0; i < ndims; i++) {
-    total *= dims[i];
-  }
-
-  // Write matrix as JSON object with __matrix marker
-  // {"__matrix": true, "dims": [d1, d2, ...], "data": [v1, v2, ...]}
-  if (!json_write_str(c, "{\n")) return false;
-  c->indent_level++;
-
-  // __matrix: true
-  if (!json_write_indent(c)) return false;
-  if (!json_write_str(c, "\"__matrix\": true,\n")) return false;
-
-  // dims: [...]
-  if (!json_write_indent(c)) return false;
-  if (!json_write_str(c, "\"dims\": [")) return false;
-  for (size_t i = 0; i < ndims; i++) {
-    if (i > 0) {
-      if (!json_write_str(c, ", ")) return false;
-    }
-    char buf[32];
-    snprintf(buf, sizeof(buf), "%zu", dims[i]);
-    if (!json_write_str(c, buf)) return false;
-  }
-  if (!json_write_str(c, "],\n")) return false;
-
-  // data: [...]
-  if (!json_write_indent(c)) return false;
-  if (!json_write_str(c, "\"data\": [")) return false;
-  for (size_t i = 0; i < total; i++) {
-    if (i > 0) {
-      if (!json_write_str(c, ", ")) return false;
-    }
-    char buf[64];
-    double v = data[i];
-    if (isnan(v) || isinf(v)) {
-      snprintf(buf, sizeof(buf), "null");
-    } else {
-      snprintf(buf, sizeof(buf), "%.17g", v);
-    }
-    if (!json_write_str(c, buf)) return false;
-  }
-  if (!json_write_str(c, "]\n")) return false;
-
-  c->indent_level--;
-  if (!json_write_indent(c)) return false;
-  if (!json_write_char(c, '}')) return false;
-
-  return true;
-}
-
 // #############################################################################
 // Read helpers
 // #############################################################################
@@ -618,22 +560,6 @@ static olib_object_type_t json_read_peek(void* ctx) {
     return OLIB_OBJECT_TYPE_STRING;
   }
   if (ch == '{') {
-    // Check if it's a matrix object
-    size_t saved_pos = p->pos;
-    p->pos++;  // Skip '{'
-    json_skip_whitespace(p);
-
-    // Look for "__matrix" key
-    if (p->pos < p->size && p->buffer[p->pos] == '"') {
-      size_t key_start = p->pos + 1;
-      if (p->size - key_start >= 10 &&
-          strncmp(p->buffer + key_start, "__matrix\"", 9) == 0) {
-        p->pos = saved_pos;
-        return OLIB_OBJECT_TYPE_MATRIX;
-      }
-    }
-
-    p->pos = saved_pos;
     return OLIB_OBJECT_TYPE_STRUCT;
   }
   if (ch == '[') {
@@ -876,181 +802,6 @@ static bool json_read_struct_end(void* ctx) {
   return true;
 }
 
-static bool json_read_matrix(void* ctx, size_t* ndims, size_t** dims, double** data) {
-  json_ctx_t* c = (json_ctx_t*)ctx;
-  text_parse_ctx_t* p = &c->parse;
-  json_skip_whitespace(p);
-
-  // Expect '{'
-  if (p->pos >= p->size || p->buffer[p->pos] != '{') {
-    return false;
-  }
-  p->pos++;
-
-  size_t* d = NULL;
-  double* values = NULL;
-  size_t dim_count = 0;
-  size_t data_count = 0;
-  bool got_matrix = false;
-  bool got_dims = false;
-  bool got_data = false;
-
-  // Parse the object fields
-  while (true) {
-    json_skip_whitespace(p);
-
-    // Skip comma if present
-    if (p->pos < p->size && p->buffer[p->pos] == ',') {
-      p->pos++;
-      json_skip_whitespace(p);
-    }
-
-    // Check for end of object
-    if (p->pos >= p->size || p->buffer[p->pos] == '}') {
-      break;
-    }
-
-    // Read key
-    const char* key = json_parse_string(p);
-    if (!key) goto error;
-
-    // Skip colon
-    json_skip_whitespace(p);
-    if (p->pos >= p->size || p->buffer[p->pos] != ':') goto error;
-    p->pos++;
-    json_skip_whitespace(p);
-
-    if (strcmp(key, "__matrix") == 0) {
-      // Read boolean true
-      if (p->pos + 4 <= p->size && strncmp(p->buffer + p->pos, "true", 4) == 0) {
-        p->pos += 4;
-        got_matrix = true;
-      } else {
-        goto error;
-      }
-    } else if (strcmp(key, "dims") == 0) {
-      // Read dims list
-      if (p->pos >= p->size || p->buffer[p->pos] != '[') goto error;
-      p->pos++;
-
-      size_t dim_cap = 4;
-      d = olib_malloc(dim_cap * sizeof(size_t));
-      if (!d) goto error;
-
-      while (true) {
-        json_skip_whitespace(p);
-        if (p->pos < p->size && p->buffer[p->pos] == ']') {
-          p->pos++;
-          break;
-        }
-        if (dim_count > 0) {
-          if (p->pos >= p->size || p->buffer[p->pos] != ',') goto error;
-          p->pos++;
-        }
-
-        text_parse_number_result_t result;
-        if (!json_parse_number(p, &result)) goto error;
-
-        if (dim_count >= dim_cap) {
-          dim_cap *= 2;
-          size_t* new_d = olib_realloc(d, dim_cap * sizeof(size_t));
-          if (!new_d) goto error;
-          d = new_d;
-        }
-        d[dim_count++] = (size_t)result.int_value;
-      }
-      got_dims = true;
-    } else if (strcmp(key, "data") == 0) {
-      // Read data list
-      if (p->pos >= p->size || p->buffer[p->pos] != '[') goto error;
-      p->pos++;
-
-      size_t data_cap = 64;
-      values = olib_malloc(data_cap * sizeof(double));
-      if (!values) goto error;
-
-      while (true) {
-        json_skip_whitespace(p);
-        if (p->pos < p->size && p->buffer[p->pos] == ']') {
-          p->pos++;
-          break;
-        }
-        if (data_count > 0) {
-          if (p->pos >= p->size || p->buffer[p->pos] != ',') goto error;
-          p->pos++;
-        }
-
-        json_skip_whitespace(p);
-
-        // Handle null
-        if (p->pos + 4 <= p->size && strncmp(p->buffer + p->pos, "null", 4) == 0) {
-          p->pos += 4;
-          if (data_count >= data_cap) {
-            data_cap *= 2;
-            double* new_values = olib_realloc(values, data_cap * sizeof(double));
-            if (!new_values) goto error;
-            values = new_values;
-          }
-          values[data_count++] = 0.0;
-          continue;
-        }
-
-        text_parse_number_result_t result;
-        if (!json_parse_number(p, &result)) goto error;
-
-        if (data_count >= data_cap) {
-          data_cap *= 2;
-          double* new_values = olib_realloc(values, data_cap * sizeof(double));
-          if (!new_values) goto error;
-          values = new_values;
-        }
-        values[data_count++] = result.is_float ? result.float_value : (double)result.int_value;
-      }
-      got_data = true;
-    } else {
-      // Skip unknown value
-      // Simple skip: just find matching brackets/end
-      int depth = 0;
-      bool in_str = false;
-      while (p->pos < p->size) {
-        char ch = p->buffer[p->pos];
-        if (in_str) {
-          if (ch == '\\' && p->pos + 1 < p->size) {
-            p->pos += 2;
-            continue;
-          }
-          if (ch == '"') in_str = false;
-        } else {
-          if (ch == '"') in_str = true;
-          else if (ch == '[' || ch == '{') depth++;
-          else if (ch == ']' || ch == '}') {
-            if (depth == 0) break;
-            depth--;
-          } else if (ch == ',' && depth == 0) break;
-        }
-        p->pos++;
-      }
-    }
-  }
-
-  // Skip closing '}'
-  json_skip_whitespace(p);
-  if (p->pos >= p->size || p->buffer[p->pos] != '}') goto error;
-  p->pos++;
-
-  if (!got_matrix || !got_dims || !got_data) goto error;
-
-  *ndims = dim_count;
-  *dims = d;
-  *data = values;
-  return true;
-
-error:
-  if (d) olib_free(d);
-  if (values) olib_free(values);
-  return false;
-}
-
 // #############################################################################
 // Lifecycle callbacks
 // #############################################################################
@@ -1132,7 +883,6 @@ OLIB_API olib_serializer_t* olib_serializer_new_json_text() {
     .write_struct_begin = json_write_struct_begin,
     .write_struct_key = json_write_struct_key,
     .write_struct_end = json_write_struct_end,
-    .write_matrix = json_write_matrix,
 
     .read_peek = json_read_peek,
     .read_int = json_read_int,
@@ -1145,7 +895,6 @@ OLIB_API olib_serializer_t* olib_serializer_new_json_text() {
     .read_struct_begin = json_read_struct_begin,
     .read_struct_key = json_read_struct_key,
     .read_struct_end = json_read_struct_end,
-    .read_matrix = json_read_matrix,
   };
 
   olib_serializer_t* serializer = olib_serializer_new(&config);

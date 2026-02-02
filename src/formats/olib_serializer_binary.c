@@ -36,7 +36,6 @@ SOFTWARE.
 #define BINARY_TAG_BOOL   0x05
 #define BINARY_TAG_LIST  0x06
 #define BINARY_TAG_STRUCT 0x07
-#define BINARY_TAG_MATRIX 0x08
 
 // #############################################################################
 // Context structure for binary serialization
@@ -238,24 +237,6 @@ static bool binary_write_struct_end(void* ctx) {
   return binary_write_u32(c, 0);
 }
 
-static bool binary_write_matrix(void* ctx, size_t ndims, const size_t* dims, const double* data) {
-  binary_ctx_t* c = (binary_ctx_t*)ctx;
-  if (!binary_write_u8(c, BINARY_TAG_MATRIX)) return false;
-  if (!binary_write_u32(c, (uint32_t)ndims)) return false;
-
-  size_t total = 1;
-  for (size_t i = 0; i < ndims; i++) {
-    if (!binary_write_u32(c, (uint32_t)dims[i])) return false;
-    total *= dims[i];
-  }
-
-  for (size_t i = 0; i < total; i++) {
-    if (!binary_write_f64(c, data[i])) return false;
-  }
-
-  return true;
-}
-
 // #############################################################################
 // Read callbacks
 // #############################################################################
@@ -275,7 +256,6 @@ static olib_object_type_t binary_read_peek(void* ctx) {
     case BINARY_TAG_BOOL:   return OLIB_OBJECT_TYPE_BOOL;
     case BINARY_TAG_LIST:  return OLIB_OBJECT_TYPE_LIST;
     case BINARY_TAG_STRUCT: return OLIB_OBJECT_TYPE_STRUCT;
-    case BINARY_TAG_MATRIX: return OLIB_OBJECT_TYPE_MATRIX;
     default:                return OLIB_OBJECT_TYPE_MAX;
   }
 }
@@ -399,48 +379,6 @@ static bool binary_read_struct_end(void* ctx) {
   return (len == 0);
 }
 
-static bool binary_read_matrix(void* ctx, size_t* ndims, size_t** dims, double** data) {
-  binary_ctx_t* c = (binary_ctx_t*)ctx;
-  uint8_t tag;
-  if (!binary_read_u8(c, &tag) || tag != BINARY_TAG_MATRIX) return false;
-
-  uint32_t nd;
-  if (!binary_read_u32(c, &nd)) return false;
-
-  size_t* d = olib_malloc(nd * sizeof(size_t));
-  if (!d) return false;
-
-  size_t total = 1;
-  for (uint32_t i = 0; i < nd; i++) {
-    uint32_t dim;
-    if (!binary_read_u32(c, &dim)) {
-      olib_free(d);
-      return false;
-    }
-    d[i] = dim;
-    total *= dim;
-  }
-
-  double* values = olib_malloc(total * sizeof(double));
-  if (!values) {
-    olib_free(d);
-    return false;
-  }
-
-  for (size_t i = 0; i < total; i++) {
-    if (!binary_read_f64(c, &values[i])) {
-      olib_free(d);
-      olib_free(values);
-      return false;
-    }
-  }
-
-  *ndims = nd;
-  *dims = d;
-  *data = values;
-  return true;
-}
-
 // #############################################################################
 // Lifecycle callbacks
 // #############################################################################
@@ -520,7 +458,6 @@ OLIB_API olib_serializer_t* olib_serializer_new_binary() {
     .write_struct_begin = binary_write_struct_begin,
     .write_struct_key = binary_write_struct_key,
     .write_struct_end = binary_write_struct_end,
-    .write_matrix = binary_write_matrix,
 
     .read_peek = binary_read_peek,
     .read_int = binary_read_int,
@@ -533,7 +470,6 @@ OLIB_API olib_serializer_t* olib_serializer_new_binary() {
     .read_struct_begin = binary_read_struct_begin,
     .read_struct_key = binary_read_struct_key,
     .read_struct_end = binary_read_struct_end,
-    .read_matrix = binary_read_matrix,
   };
 
   olib_serializer_t* serializer = olib_serializer_new(&config);

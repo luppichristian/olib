@@ -81,24 +81,6 @@ TEST(ObjectDupe, DupeStruct) {
   olib_object_free(copy);
 }
 
-TEST(ObjectDupe, DupeMatrix) {
-  size_t dims[] = {2, 3};
-  olib_object_t* original = olib_object_matrix_new(2, dims);
-  olib_object_matrix_fill(original, 3.14);
-
-  olib_object_t* copy = olib_object_dupe(original);
-  ASSERT_NE(copy, nullptr);
-  EXPECT_EQ(olib_object_matrix_ndims(copy), 2u);
-  EXPECT_EQ(olib_object_matrix_dim(copy, 0), 2u);
-  EXPECT_EQ(olib_object_matrix_dim(copy, 1), 3u);
-
-  size_t idx[] = {0, 0};
-  EXPECT_DOUBLE_EQ(olib_object_matrix_get(copy, idx), 3.14);
-
-  olib_object_free(original);
-  olib_object_free(copy);
-}
-
 TEST(ObjectDupe, DupeNested) {
   // Create nested structure: struct containing list containing struct
   olib_object_t* root = olib_object_new(OLIB_OBJECT_TYPE_STRUCT);

@@ -58,7 +58,6 @@ typedef struct olib_serializer_config_t {
   bool (*write_struct_begin)(void* ctx);
   bool (*write_struct_key)(void* ctx, const char* key);
   bool (*write_struct_end)(void* ctx);
-  bool (*write_matrix)(void* ctx, size_t ndims, const size_t* dims, const double* data);
 
   // Read callbacks (return false on error or end-of-container)
   olib_object_type_t (*read_peek)(void* ctx);  // Peek next type without consuming
@@ -72,7 +71,6 @@ typedef struct olib_serializer_config_t {
   bool (*read_struct_begin)(void* ctx);
   bool (*read_struct_key)(void* ctx, const char** key);  // Returns false when no more keys
   bool (*read_struct_end)(void* ctx);
-  bool (*read_matrix)(void* ctx, size_t* ndims, size_t** dims, double** data);  // Caller frees dims/data
 } olib_serializer_config_t;
 
 // Serializer management

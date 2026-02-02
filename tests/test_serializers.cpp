@@ -44,34 +44,6 @@ TEST(SerializerJsonText, RoundTripComplex) {
   olib_serializer_free(ser);
 }
 
-TEST(SerializerJsonText, RoundTripMatrix) {
-  olib_serializer_t* ser = olib_serializer_new_json_text();
-  ASSERT_NE(ser, nullptr);
-
-  size_t dims[] = {2, 3};
-  olib_object_t* original = olib_object_matrix_new(2, dims);
-  double data[] = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
-  olib_object_matrix_set_data(original, data, 6);
-
-  char* json = nullptr;
-  EXPECT_TRUE(olib_serializer_write_string(ser, original, &json));
-  ASSERT_NE(json, nullptr);
-
-  olib_object_t* parsed = olib_serializer_read_string(ser, json);
-  ASSERT_NE(parsed, nullptr);
-  EXPECT_EQ(olib_object_matrix_ndims(parsed), 2u);
-  EXPECT_EQ(olib_object_matrix_dim(parsed, 0), 2u);
-  EXPECT_EQ(olib_object_matrix_dim(parsed, 1), 3u);
-
-  size_t idx[] = {1, 2};
-  EXPECT_DOUBLE_EQ(olib_object_matrix_get(parsed, idx), 6.0);
-
-  olib_free(json);
-  olib_object_free(original);
-  olib_object_free(parsed);
-  olib_serializer_free(ser);
-}
-
 TEST(SerializerJsonText, SpecialCharacters) {
   olib_serializer_t* ser = olib_serializer_new_json_text();
 
@@ -139,28 +111,6 @@ TEST(SerializerYaml, RoundTripComplex) {
   olib_serializer_free(ser);
 }
 
-TEST(SerializerYaml, RoundTripMatrix) {
-  olib_serializer_t* ser = olib_serializer_new_yaml();
-
-  size_t dims[] = {2, 2};
-  olib_object_t* original = olib_object_matrix_new(2, dims);
-  olib_object_matrix_fill(original, 7.5);
-
-  char* yaml = nullptr;
-  EXPECT_TRUE(olib_serializer_write_string(ser, original, &yaml));
-
-  olib_object_t* parsed = olib_serializer_read_string(ser, yaml);
-  ASSERT_NE(parsed, nullptr);
-
-  size_t idx[] = {1, 1};
-  EXPECT_DOUBLE_EQ(olib_object_matrix_get(parsed, idx), 7.5);
-
-  olib_free(yaml);
-  olib_object_free(original);
-  olib_object_free(parsed);
-  olib_serializer_free(ser);
-}
-
 // =============================================================================
 // XML Serializer Tests
 // =============================================================================
@@ -177,29 +127,6 @@ TEST(SerializerXml, RoundTripComplex) {
 
   olib_object_t* parsed = olib_serializer_read_string(ser, xml);
   verify_test_object(parsed);
-
-  olib_free(xml);
-  olib_object_free(original);
-  olib_object_free(parsed);
-  olib_serializer_free(ser);
-}
-
-TEST(SerializerXml, RoundTripMatrix) {
-  olib_serializer_t* ser = olib_serializer_new_xml();
-
-  size_t dims[] = {3};
-  olib_object_t* original = olib_object_matrix_new(1, dims);
-  double data[] = {1.1, 2.2, 3.3};
-  olib_object_matrix_set_data(original, data, 3);
-
-  char* xml = nullptr;
-  EXPECT_TRUE(olib_serializer_write_string(ser, original, &xml));
-
-  olib_object_t* parsed = olib_serializer_read_string(ser, xml);
-  ASSERT_NE(parsed, nullptr);
-
-  size_t idx[] = {2};
-  EXPECT_NEAR(olib_object_matrix_get(parsed, idx), 3.3, 0.0001);
 
   olib_free(xml);
   olib_object_free(original);
@@ -248,35 +175,6 @@ TEST(SerializerBinary, RoundTripComplex) {
 
   olib_object_t* parsed = olib_serializer_read(ser, data, size);
   verify_test_object(parsed);
-
-  olib_free(data);
-  olib_object_free(original);
-  olib_object_free(parsed);
-  olib_serializer_free(ser);
-}
-
-TEST(SerializerBinary, RoundTripMatrix) {
-  olib_serializer_t* ser = olib_serializer_new_binary();
-
-  size_t dims[] = {4, 4};
-  olib_object_t* original = olib_object_matrix_new(2, dims);
-  for (size_t i = 0; i < 16; i++) {
-    double* data = olib_object_matrix_data(original);
-    data[i] = (double)i;
-  }
-
-  uint8_t* data = nullptr;
-  size_t size = 0;
-  EXPECT_TRUE(olib_serializer_write(ser, original, &data, &size));
-
-  olib_object_t* parsed = olib_serializer_read(ser, data, size);
-  ASSERT_NE(parsed, nullptr);
-
-  EXPECT_EQ(olib_object_matrix_total_size(parsed), 16u);
-  double* parsed_data = olib_object_matrix_data(parsed);
-  for (size_t i = 0; i < 16; i++) {
-    EXPECT_DOUBLE_EQ(parsed_data[i], (double)i);
-  }
 
   olib_free(data);
   olib_object_free(original);

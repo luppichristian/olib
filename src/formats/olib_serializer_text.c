@@ -326,90 +326,6 @@ static bool text_write_struct_end(void* ctx) {
   return true;
 }
 
-static bool text_write_matrix(void* ctx, size_t ndims, const size_t* dims, const double* data) {
-  text_ctx_t* c = (text_ctx_t*)ctx;
-
-  if (c->in_list) {
-    if (!c->list_first_item) {
-      if (!text_write_str(c, ", ")) return false;
-    }
-    c->list_first_item = false;
-  } else if (c->in_struct) {
-    if (!c->struct_first_item) {
-      if (!text_write_char(c, '\n')) return false;
-    }
-    c->struct_first_item = false;
-    if (!text_write_indent(c)) return false;
-  }
-
-  if (!text_write_key_prefix(c)) return false;
-
-  // Format matrix as nested lists
-  // For 1D: [ v1, v2, v3 ]
-  // For 2D: [ [ row1 ] [ row2 ] ... ]
-  // etc.
-
-  if (ndims == 1) {
-    if (!text_write_str(c, "[ ")) return false;
-    for (size_t i = 0; i < dims[0]; i++) {
-      if (i > 0) {
-        if (!text_write_str(c, ", ")) return false;
-      }
-      char buf[64];
-      snprintf(buf, sizeof(buf), "%g", data[i]);
-      if (!text_write_str(c, buf)) return false;
-    }
-    if (!text_write_str(c, " ]")) return false;
-  } else if (ndims == 2) {
-    if (!text_write_str(c, "[\n")) return false;
-    c->indent_level++;
-    for (size_t i = 0; i < dims[0]; i++) {
-      if (!text_write_indent(c)) return false;
-      if (!text_write_str(c, "[ ")) return false;
-      for (size_t j = 0; j < dims[1]; j++) {
-        if (j > 0) {
-          if (!text_write_str(c, ", ")) return false;
-        }
-        char buf[64];
-        snprintf(buf, sizeof(buf), "%g", data[i * dims[1] + j]);
-        if (!text_write_str(c, buf)) return false;
-      }
-      if (!text_write_str(c, " ]\n")) return false;
-    }
-    c->indent_level--;
-    if (!text_write_indent(c)) return false;
-    if (!text_write_char(c, ']')) return false;
-  } else {
-    // For higher dimensions, flatten to a single list with dimensions prefix
-    if (!text_write_str(c, "mat(")) return false;
-    for (size_t i = 0; i < ndims; i++) {
-      if (i > 0) {
-        if (!text_write_char(c, 'x')) return false;
-      }
-      char buf[32];
-      snprintf(buf, sizeof(buf), "%zu", dims[i]);
-      if (!text_write_str(c, buf)) return false;
-    }
-    if (!text_write_str(c, ") [ ")) return false;
-
-    size_t total = 1;
-    for (size_t i = 0; i < ndims; i++) {
-      total *= dims[i];
-    }
-    for (size_t i = 0; i < total; i++) {
-      if (i > 0) {
-        if (!text_write_str(c, ", ")) return false;
-      }
-      char buf[64];
-      snprintf(buf, sizeof(buf), "%g", data[i]);
-      if (!text_write_str(c, buf)) return false;
-    }
-    if (!text_write_str(c, " ]")) return false;
-  }
-
-  return true;
-}
-
 // #############################################################################
 // Read callbacks
 // #############################################################################
@@ -458,11 +374,6 @@ static olib_object_type_t text_read_peek(void* ctx) {
     }
     if (p->pos + 5 <= p->size && strncmp(p->buffer + p->pos, "false", 5) == 0) {
       return OLIB_OBJECT_TYPE_BOOL;
-    }
-  }
-  if (ch == 'm') {
-    if (p->pos + 4 <= p->size && strncmp(p->buffer + p->pos, "mat(", 4) == 0) {
-      return OLIB_OBJECT_TYPE_MATRIX;
     }
   }
 
@@ -592,204 +503,6 @@ static bool text_read_struct_end(void* ctx) {
   return text_parse_match(&c->parse, '}');
 }
 
-static bool text_read_matrix(void* ctx, size_t* ndims, size_t** dims, double** data) {
-  text_ctx_t* c = (text_ctx_t*)ctx;
-  text_parse_ctx_t* p = &c->parse;
-  text_parse_skip_whitespace_and_comments(p);
-
-  // Check for mat(dims) prefix
-  if (p->pos + 4 <= p->size && strncmp(p->buffer + p->pos, "mat(", 4) == 0) {
-    p->pos += 4;
-
-    // Parse dimensions like 2x3x4
-    size_t dim_count = 0;
-    size_t dim_cap = 4;
-    size_t* d = olib_malloc(dim_cap * sizeof(size_t));
-    if (!d) return false;
-
-    while (true) {
-      text_parse_number_result_t result;
-      if (!text_parse_number(p, &result)) {
-        olib_free(d);
-        return false;
-      }
-
-      if (dim_count >= dim_cap) {
-        dim_cap *= 2;
-        size_t* new_d = olib_realloc(d, dim_cap * sizeof(size_t));
-        if (!new_d) {
-          olib_free(d);
-          return false;
-        }
-        d = new_d;
-      }
-      d[dim_count++] = (size_t)result.int_value;
-
-      if (!text_parse_match(p, 'x')) break;
-    }
-
-    if (!text_parse_match(p, ')')) {
-      olib_free(d);
-      return false;
-    }
-
-    if (!text_parse_match(p, '[')) {
-      olib_free(d);
-      return false;
-    }
-
-    size_t total = 1;
-    for (size_t i = 0; i < dim_count; i++) {
-      total *= d[i];
-    }
-
-    double* values = olib_malloc(total * sizeof(double));
-    if (!values) {
-      olib_free(d);
-      return false;
-    }
-
-    for (size_t i = 0; i < total; i++) {
-      if (i > 0) text_parse_match(p, ',');
-      text_parse_number_result_t result;
-      if (!text_parse_number(p, &result)) {
-        olib_free(d);
-        olib_free(values);
-        return false;
-      }
-      values[i] = result.is_float ? result.float_value : (double)result.int_value;
-    }
-
-    if (!text_parse_match(p, ']')) {
-      olib_free(d);
-      olib_free(values);
-      return false;
-    }
-
-    *ndims = dim_count;
-    *dims = d;
-    *data = values;
-    return true;
-  }
-
-  // Otherwise, parse as nested lists (1D or 2D)
-  if (!text_parse_match(p, '[')) return false;
-
-  text_parse_skip_whitespace(p);
-  char first = text_parse_peek_raw(p);
-
-  if (first == '[') {
-    // 2D matrix
-    size_t rows = 0;
-    size_t cols = 0;
-    size_t data_cap = 64;
-    double* values = olib_malloc(data_cap * sizeof(double));
-    if (!values) return false;
-    size_t data_count = 0;
-
-    while (text_parse_peek(p) == '[') {
-      text_parse_match(p, '[');
-      size_t row_cols = 0;
-
-      while (text_parse_peek(p) != ']') {
-        if (row_cols > 0) text_parse_match(p, ',');
-
-        if (data_count >= data_cap) {
-          data_cap *= 2;
-          double* new_values = olib_realloc(values, data_cap * sizeof(double));
-          if (!new_values) {
-            olib_free(values);
-            return false;
-          }
-          values = new_values;
-        }
-
-        text_parse_number_result_t result;
-        if (!text_parse_number(p, &result)) {
-          olib_free(values);
-          return false;
-        }
-        values[data_count++] = result.is_float ? result.float_value : (double)result.int_value;
-        row_cols++;
-      }
-
-      text_parse_match(p, ']');
-
-      if (rows == 0) {
-        cols = row_cols;
-      } else if (cols != row_cols) {
-        olib_free(values);
-        return false;
-      }
-      rows++;
-
-      text_parse_skip_whitespace(p);
-    }
-
-    if (!text_parse_match(p, ']')) {
-      olib_free(values);
-      return false;
-    }
-
-    size_t* d = olib_malloc(2 * sizeof(size_t));
-    if (!d) {
-      olib_free(values);
-      return false;
-    }
-    d[0] = rows;
-    d[1] = cols;
-
-    *ndims = 2;
-    *dims = d;
-    *data = values;
-    return true;
-  } else {
-    // 1D matrix
-    size_t data_cap = 64;
-    double* values = olib_malloc(data_cap * sizeof(double));
-    if (!values) return false;
-    size_t data_count = 0;
-
-    while (text_parse_peek(p) != ']') {
-      if (data_count > 0) text_parse_match(p, ',');
-
-      if (data_count >= data_cap) {
-        data_cap *= 2;
-        double* new_values = olib_realloc(values, data_cap * sizeof(double));
-        if (!new_values) {
-          olib_free(values);
-          return false;
-        }
-        values = new_values;
-      }
-
-      text_parse_number_result_t result;
-      if (!text_parse_number(p, &result)) {
-        olib_free(values);
-        return false;
-      }
-      values[data_count++] = result.is_float ? result.float_value : (double)result.int_value;
-    }
-
-    if (!text_parse_match(p, ']')) {
-      olib_free(values);
-      return false;
-    }
-
-    size_t* d = olib_malloc(sizeof(size_t));
-    if (!d) {
-      olib_free(values);
-      return false;
-    }
-    d[0] = data_count;
-
-    *ndims = 1;
-    *dims = d;
-    *data = values;
-    return true;
-  }
-}
-
 // #############################################################################
 // Lifecycle callbacks
 // #############################################################################
@@ -873,7 +586,6 @@ OLIB_API olib_serializer_t* olib_serializer_new_txt() {
     .write_struct_begin = text_write_struct_begin,
     .write_struct_key = text_write_struct_key,
     .write_struct_end = text_write_struct_end,
-    .write_matrix = text_write_matrix,
 
     .read_peek = text_read_peek,
     .read_int = text_read_int,
@@ -886,7 +598,6 @@ OLIB_API olib_serializer_t* olib_serializer_new_txt() {
     .read_struct_begin = text_read_struct_begin,
     .read_struct_key = text_read_struct_key,
     .read_struct_end = text_read_struct_end,
-    .read_matrix = text_read_matrix,
   };
 
   olib_serializer_t* serializer = olib_serializer_new(&config);

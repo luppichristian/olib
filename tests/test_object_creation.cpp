@@ -74,7 +74,6 @@ TEST(ObjectCreation, TypeToString) {
   EXPECT_STREQ(olib_object_type_to_string(OLIB_OBJECT_TYPE_FLOAT), "float");
   EXPECT_STREQ(olib_object_type_to_string(OLIB_OBJECT_TYPE_STRING), "string");
   EXPECT_STREQ(olib_object_type_to_string(OLIB_OBJECT_TYPE_BOOL), "bool");
-  EXPECT_STREQ(olib_object_type_to_string(OLIB_OBJECT_TYPE_MATRIX), "matrix");
 }
 
 TEST(ObjectCreation, FreeNullIsSafe) {

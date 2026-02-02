@@ -24,19 +24,5 @@
     "nested_float": 2.71828,
     "nested_bool": false,
     "nested_string": "Nested value"
-  },
-  "matrix_2d": {
-    "dims": [
-      2,
-      3
-    ],
-    "data": [
-      1.0,
-      2.0,
-      3.0,
-      4.0,
-      5.0,
-      6.0
-    ]
   }
 }

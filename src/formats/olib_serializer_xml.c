@@ -441,78 +441,6 @@ static bool xml_write_struct_end(void* ctx) {
   return true;
 }
 
-static bool xml_write_matrix(void* ctx, size_t ndims, const size_t* dims, const double* data) {
-  xml_ctx_t* c = (xml_ctx_t*)ctx;
-
-  if (c->in_list) {
-    if (!c->list_first_item) {
-      if (!xml_write_char(c, '\n')) return false;
-    }
-    c->list_first_item = false;
-    if (!xml_write_indent(c)) return false;
-  } else if (c->in_struct) {
-    if (!c->struct_first_item) {
-      if (!xml_write_char(c, '\n')) return false;
-    }
-    c->struct_first_item = false;
-    if (!xml_write_indent(c)) return false;
-  }
-
-  // Build dims string like "2,3,4"
-  char dims_str[256] = "";
-  size_t dims_len = 0;
-  for (size_t i = 0; i < ndims; i++) {
-    if (i > 0) {
-      dims_str[dims_len++] = ',';
-    }
-    dims_len += snprintf(dims_str + dims_len, sizeof(dims_str) - dims_len, "%zu", dims[i]);
-  }
-
-  // Handle struct key for matrix
-  if (c->in_struct && c->pending_key) {
-    if (!xml_write_str(c, "<key name=\"")) return false;
-    if (!xml_write_escaped(c, c->pending_key)) return false;
-    if (!xml_write_str(c, "\" type=\"matrix\" dims=\"")) return false;
-    if (!xml_write_str(c, dims_str)) return false;
-    if (!xml_write_str(c, "\">")) return false;
-    c->pending_key = NULL;
-  } else if (c->in_list) {
-    if (!xml_write_str(c, "<item type=\"matrix\" dims=\"")) return false;
-    if (!xml_write_str(c, dims_str)) return false;
-    if (!xml_write_str(c, "\">")) return false;
-  } else {
-    if (!xml_write_str(c, "<matrix dims=\"")) return false;
-    if (!xml_write_str(c, dims_str)) return false;
-    if (!xml_write_str(c, "\">")) return false;
-  }
-
-  // Write data as space-separated values
-  size_t total = 1;
-  for (size_t i = 0; i < ndims; i++) {
-    total *= dims[i];
-  }
-
-  for (size_t i = 0; i < total; i++) {
-    if (i > 0) {
-      if (!xml_write_char(c, ' ')) return false;
-    }
-    char buf[64];
-    snprintf(buf, sizeof(buf), "%g", data[i]);
-    if (!xml_write_str(c, buf)) return false;
-  }
-
-  // Close tag
-  if (c->in_struct) {
-    if (!xml_write_str(c, "</key>")) return false;
-  } else if (c->in_list) {
-    if (!xml_write_str(c, "</item>")) return false;
-  } else {
-    if (!xml_write_str(c, "</matrix>")) return false;
-  }
-
-  return true;
-}
-
 // #############################################################################
 // XML parsing helpers
 // #############################################################################
@@ -782,7 +710,6 @@ static olib_object_type_t xml_get_type_from_tag(const xml_tag_info_t* info) {
   if (strcmp(type_str, "list") == 0) return OLIB_OBJECT_TYPE_LIST;  // Legacy support
   if (strcmp(type_str, "list") == 0) return OLIB_OBJECT_TYPE_LIST;
   if (strcmp(type_str, "struct") == 0) return OLIB_OBJECT_TYPE_STRUCT;
-  if (strcmp(type_str, "matrix") == 0) return OLIB_OBJECT_TYPE_MATRIX;
 
   return OLIB_OBJECT_TYPE_MAX;
 }
@@ -1128,103 +1055,6 @@ static bool xml_read_struct_end(void* ctx) {
   return info.is_closing_tag;
 }
 
-static bool xml_read_matrix(void* ctx, size_t* ndims, size_t** dims, double** data) {
-  xml_ctx_t* c = (xml_ctx_t*)ctx;
-  text_parse_ctx_t* p = &c->parse;
-
-  xml_parse_skip_ws_and_comments(p);
-
-  xml_tag_info_t info;
-  if (!c->has_pending_type) {
-    if (!xml_parse_tag(p, &info)) return false;
-  } else {
-    // Use the pending tag info which has the dims attribute
-    info = c->pending_tag_info;
-    c->has_pending_type = false;
-  }
-
-  // Parse dims attribute
-  size_t dim_count = 0;
-  size_t dim_cap = 4;
-  size_t* d = olib_malloc(dim_cap * sizeof(size_t));
-  if (!d) return false;
-
-  if (info.dims_attr[0]) {
-    // Make a copy since strtok modifies the string
-    char dims_copy[128];
-    strncpy(dims_copy, info.dims_attr, sizeof(dims_copy) - 1);
-    dims_copy[sizeof(dims_copy) - 1] = '\0';
-    
-    char* dims_str = dims_copy;
-    char* token = strtok(dims_str, ",");
-    while (token) {
-      if (dim_count >= dim_cap) {
-        dim_cap *= 2;
-        size_t* new_d = olib_realloc(d, dim_cap * sizeof(size_t));
-        if (!new_d) {
-          olib_free(d);
-          return false;
-        }
-        d = new_d;
-      }
-      d[dim_count++] = (size_t)atoll(token);
-      token = strtok(NULL, ",");
-    }
-  }
-
-  if (dim_count == 0) {
-    olib_free(d);
-    return false;
-  }
-
-  // Calculate total size
-  size_t total = 1;
-  for (size_t i = 0; i < dim_count; i++) {
-    total *= d[i];
-  }
-
-  // Parse content (space-separated values)
-  const char* content = xml_parse_text_content(p);
-  if (!content) {
-    olib_free(d);
-    return false;
-  }
-
-  // Make a copy for strtok
-  size_t content_len = strlen(content);
-  char* content_copy = olib_malloc(content_len + 1);
-  if (!content_copy) {
-    olib_free(d);
-    return false;
-  }
-  strcpy(content_copy, content);
-
-  double* values = olib_malloc(total * sizeof(double));
-  if (!values) {
-    olib_free(d);
-    olib_free(content_copy);
-    return false;
-  }
-
-  // Parse values
-  size_t val_count = 0;
-  char* val_token = strtok(content_copy, " \t\n\r");
-  while (val_token && val_count < total) {
-    values[val_count++] = strtod(val_token, NULL);
-    val_token = strtok(NULL, " \t\n\r");
-  }
-
-  olib_free(content_copy);
-
-  // Skip closing tag
-  xml_tag_info_t close_info;
-  xml_parse_tag(p, &close_info);
-
-  *ndims = dim_count;
-  *dims = d;
-  *data = values;
-  return true;
-}
 
 // #############################################################################
 // Lifecycle callbacks
@@ -1344,7 +1174,6 @@ OLIB_API olib_serializer_t* olib_serializer_new_xml() {
     .write_struct_begin = xml_write_struct_begin,
     .write_struct_key = xml_write_struct_key,
     .write_struct_end = xml_write_struct_end,
-    .write_matrix = xml_write_matrix,
 
     .read_peek = xml_read_peek,
     .read_int = xml_read_int,
@@ -1357,7 +1186,6 @@ OLIB_API olib_serializer_t* olib_serializer_new_xml() {
     .read_struct_begin = xml_read_struct_begin,
     .read_struct_key = xml_read_struct_key,
     .read_struct_end = xml_read_struct_end,
-    .read_matrix = xml_read_matrix,
   };
 
   olib_serializer_t* serializer = olib_serializer_new(&config);

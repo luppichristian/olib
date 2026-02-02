@@ -408,50 +408,6 @@ static bool toml_write_struct_end(void* ctx) {
   return true;
 }
 
-static bool toml_write_matrix(void* ctx, size_t ndims, const size_t* dims, const double* data) {
-  toml_ctx_t* c = (toml_ctx_t*)ctx;
-
-  if (!toml_write_item_separator(c)) return false;
-  if (!toml_write_key_prefix(c)) return false;
-
-  // Write matrix as inline table: { dims = [d1, d2, ...], data = [v1, v2, ...] }
-  if (!toml_write_str(c, "{ dims = [")) return false;
-
-  for (size_t i = 0; i < ndims; i++) {
-    if (i > 0) {
-      if (!toml_write_str(c, ", ")) return false;
-    }
-    char buf[32];
-    snprintf(buf, sizeof(buf), "%zu", dims[i]);
-    if (!toml_write_str(c, buf)) return false;
-  }
-
-  if (!toml_write_str(c, "], data = [")) return false;
-
-  size_t total = 1;
-  for (size_t i = 0; i < ndims; i++) {
-    total *= dims[i];
-  }
-
-  for (size_t i = 0; i < total; i++) {
-    if (i > 0) {
-      if (!toml_write_str(c, ", ")) return false;
-    }
-    char buf[64];
-    snprintf(buf, sizeof(buf), "%g", data[i]);
-    if (!toml_write_str(c, buf)) return false;
-  }
-
-  if (!toml_write_str(c, "] }")) return false;
-
-  // Add newline if at top-level table
-  if (c->nesting_level == 1 && !c->in_list && !c->in_inline_table) {
-    if (!toml_write_char(c, '\n')) return false;
-  }
-
-  return true;
-}
-
 // #############################################################################
 // Read helpers
 // #############################################################################
@@ -784,115 +740,6 @@ static bool toml_read_struct_end(void* ctx) {
   return true;
 }
 
-static bool toml_read_matrix(void* ctx, size_t* ndims, size_t** dims, double** data) {
-  toml_ctx_t* c = (toml_ctx_t*)ctx;
-  text_parse_ctx_t* p = &c->parse;
-  toml_skip_whitespace_and_comments(p);
-
-  // Expect inline table format: { dims = [...], data = [...] }
-  if (!text_parse_match(p, '{')) return false;
-
-  size_t* parsed_dims = NULL;
-  double* parsed_data = NULL;
-  size_t dim_count = 0;
-  size_t data_count = 0;
-  bool got_dims = false;
-  bool got_data = false;
-
-  while (true) {
-    toml_skip_whitespace_and_comments(p);
-    char ch = text_parse_peek_raw(p);
-    if (ch == '}') break;
-
-    // Skip comma
-    text_parse_match(p, ',');
-    toml_skip_whitespace_and_comments(p);
-    if (text_parse_peek_raw(p) == '}') break;
-
-    // Parse key
-    const char* key = toml_parse_key(p);
-    if (!key) goto error;
-
-    toml_skip_whitespace_and_comments(p);
-    if (!text_parse_match(p, '=')) goto error;
-    toml_skip_whitespace_and_comments(p);
-
-    if (strcmp(key, "dims") == 0) {
-      // Parse dims list
-      if (!text_parse_match(p, '[')) goto error;
-
-      size_t dim_cap = 4;
-      parsed_dims = olib_malloc(dim_cap * sizeof(size_t));
-      if (!parsed_dims) goto error;
-
-      while (text_parse_peek(p) != ']') {
-        if (dim_count > 0) text_parse_match(p, ',');
-
-        if (dim_count >= dim_cap) {
-          dim_cap *= 2;
-          size_t* new_dims = olib_realloc(parsed_dims, dim_cap * sizeof(size_t));
-          if (!new_dims) goto error;
-          parsed_dims = new_dims;
-        }
-
-        text_parse_number_result_t result;
-        if (!text_parse_number(p, &result)) goto error;
-        parsed_dims[dim_count++] = (size_t)result.int_value;
-      }
-
-      if (!text_parse_match(p, ']')) goto error;
-      got_dims = true;
-
-    } else if (strcmp(key, "data") == 0) {
-      // Parse data list
-      if (!text_parse_match(p, '[')) goto error;
-
-      size_t data_cap = 64;
-      parsed_data = olib_malloc(data_cap * sizeof(double));
-      if (!parsed_data) goto error;
-
-      while (text_parse_peek(p) != ']') {
-        if (data_count > 0) text_parse_match(p, ',');
-
-        if (data_count >= data_cap) {
-          data_cap *= 2;
-          double* new_data = olib_realloc(parsed_data, data_cap * sizeof(double));
-          if (!new_data) goto error;
-          parsed_data = new_data;
-        }
-
-        text_parse_number_result_t result;
-        if (!text_parse_number(p, &result)) goto error;
-        parsed_data[data_count++] = result.is_float ? result.float_value : (double)result.int_value;
-      }
-
-      if (!text_parse_match(p, ']')) goto error;
-      got_data = true;
-    }
-  }
-
-  if (!text_parse_match(p, '}')) goto error;
-
-  if (!got_dims || !got_data) goto error;
-
-  // Verify data size matches dimensions
-  size_t expected_size = 1;
-  for (size_t i = 0; i < dim_count; i++) {
-    expected_size *= parsed_dims[i];
-  }
-  if (data_count != expected_size) goto error;
-
-  *ndims = dim_count;
-  *dims = parsed_dims;
-  *data = parsed_data;
-  return true;
-
-error:
-  if (parsed_dims) olib_free(parsed_dims);
-  if (parsed_data) olib_free(parsed_data);
-  return false;
-}
-
 // #############################################################################
 // Lifecycle callbacks
 // #############################################################################
@@ -979,7 +826,6 @@ OLIB_API olib_serializer_t* olib_serializer_new_toml() {
     .write_struct_begin = toml_write_struct_begin,
     .write_struct_key = toml_write_struct_key,
     .write_struct_end = toml_write_struct_end,
-    .write_matrix = toml_write_matrix,
 
     .read_peek = toml_read_peek,
     .read_int = toml_read_int,
@@ -992,7 +838,6 @@ OLIB_API olib_serializer_t* olib_serializer_new_toml() {
     .read_struct_begin = toml_read_struct_begin,
     .read_struct_key = toml_read_struct_key,
     .read_struct_end = toml_read_struct_end,
-    .read_matrix = toml_read_matrix,
   };
 
   olib_serializer_t* serializer = olib_serializer_new(&config);

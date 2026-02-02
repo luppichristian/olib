@@ -34,10 +34,6 @@
     <item type="string">green</item>
     <item type="string">blue</item>
   </string_list>
-  <matrix_3d type="matrix">
-    <dims>2 2 2</dims>
-    <data>1.0 2.0 3.0 4.0 5.0 6.0 7.0 8.0</data>
-  </matrix_3d>
   <empty_list type="list"></empty_list>
   <empty_struct type="struct"></empty_struct>
 </root>

@@ -28,6 +28,7 @@ SOFTWARE.
 #include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
+#include <math.h>
 
 // #############################################################################
 // Context structure for YAML serialization
@@ -448,68 +449,6 @@ static bool yaml_write_struct_end(void* ctx) {
   return true;
 }
 
-static bool yaml_write_matrix(void* ctx, size_t ndims, const size_t* dims, const double* data) {
-  yaml_ctx_t* c = (yaml_ctx_t*)ctx;
-
-  if (c->in_flow_list) {
-    if (!c->flow_list_first_item) {
-      if (!yaml_write_str(c, ", ")) return false;
-    }
-    c->flow_list_first_item = false;
-  } else if (c->in_block_list) {
-    if (!yaml_write_newline_indent(c)) return false;
-    if (!yaml_write_str(c, "- ")) return false;
-  } else if (c->in_struct && !c->struct_inline_value) {
-    if (!c->struct_first_item) {
-      if (!yaml_write_char(c, '\n')) return false;
-    }
-    c->struct_first_item = false;
-    if (!yaml_write_indent(c)) return false;
-  }
-
-  if (!yaml_write_key_prefix(c)) return false;
-  c->struct_inline_value = false;
-
-  // Write matrix with !matrix tag
-  if (!yaml_write_str(c, "!matrix\n")) return false;
-  c->indent_level++;
-
-  // Write dims
-  if (!yaml_write_indent(c)) return false;
-  if (!yaml_write_str(c, "dims: [")) return false;
-  for (size_t i = 0; i < ndims; i++) {
-    if (i > 0) {
-      if (!yaml_write_str(c, ", ")) return false;
-    }
-    char buf[32];
-    snprintf(buf, sizeof(buf), "%zu", dims[i]);
-    if (!yaml_write_str(c, buf)) return false;
-  }
-  if (!yaml_write_str(c, "]\n")) return false;
-
-  // Write data
-  if (!yaml_write_indent(c)) return false;
-  if (!yaml_write_str(c, "data: [")) return false;
-
-  size_t total = 1;
-  for (size_t i = 0; i < ndims; i++) {
-    total *= dims[i];
-  }
-
-  for (size_t i = 0; i < total; i++) {
-    if (i > 0) {
-      if (!yaml_write_str(c, ", ")) return false;
-    }
-    char buf[64];
-    snprintf(buf, sizeof(buf), "%g", data[i]);
-    if (!yaml_write_str(c, buf)) return false;
-  }
-  if (!yaml_write_char(c, ']')) return false;
-
-  c->indent_level--;
-  return true;
-}
-
 // #############################################################################
 // Read helpers
 // #############################################################################
@@ -613,13 +552,6 @@ static olib_object_type_t yaml_read_peek(void* ctx) {
   // Quoted string
   if (ch == '"' || ch == '\'') {
     return OLIB_OBJECT_TYPE_STRING;
-  }
-
-  // Check for !matrix tag
-  if (ch == '!') {
-    if (p->pos + 7 <= p->size && strncmp(p->buffer + p->pos, "!matrix", 7) == 0) {
-      return OLIB_OBJECT_TYPE_MATRIX;
-    }
   }
 
   // Number (possibly negative)
@@ -941,104 +873,6 @@ static bool yaml_read_struct_end(void* ctx) {
   return true;
 }
 
-static bool yaml_read_matrix(void* ctx, size_t* ndims, size_t** dims, double** data) {
-  yaml_ctx_t* c = (yaml_ctx_t*)ctx;
-  text_parse_ctx_t* p = &c->parse;
-  text_parse_skip_whitespace_and_comments(p);
-
-  // Check for !matrix tag
-  if (!text_parse_match_str(p, "!matrix")) {
-    return false;
-  }
-
-  text_parse_skip_whitespace_and_comments(p);
-
-  // Parse dims
-  if (!text_parse_match_str(p, "dims")) return false;
-  if (!text_parse_match(p, ':')) return false;
-  if (!text_parse_match(p, '[')) return false;
-
-  size_t dim_count = 0;
-  size_t dim_cap = 4;
-  size_t* d = olib_malloc(dim_cap * sizeof(size_t));
-  if (!d) return false;
-
-  while (text_parse_peek(p) != ']') {
-    if (dim_count > 0) text_parse_match(p, ',');
-
-    text_parse_number_result_t result;
-    if (!text_parse_number(p, &result)) {
-      olib_free(d);
-      return false;
-    }
-
-    if (dim_count >= dim_cap) {
-      dim_cap *= 2;
-      size_t* new_d = olib_realloc(d, dim_cap * sizeof(size_t));
-      if (!new_d) {
-        olib_free(d);
-        return false;
-      }
-      d = new_d;
-    }
-    d[dim_count++] = (size_t)result.int_value;
-  }
-
-  if (!text_parse_match(p, ']')) {
-    olib_free(d);
-    return false;
-  }
-
-  text_parse_skip_whitespace_and_comments(p);
-
-  // Parse data
-  if (!text_parse_match_str(p, "data")) {
-    olib_free(d);
-    return false;
-  }
-  if (!text_parse_match(p, ':')) {
-    olib_free(d);
-    return false;
-  }
-  if (!text_parse_match(p, '[')) {
-    olib_free(d);
-    return false;
-  }
-
-  size_t total = 1;
-  for (size_t i = 0; i < dim_count; i++) {
-    total *= d[i];
-  }
-
-  double* values = olib_malloc(total * sizeof(double));
-  if (!values) {
-    olib_free(d);
-    return false;
-  }
-
-  for (size_t i = 0; i < total; i++) {
-    if (i > 0) text_parse_match(p, ',');
-    text_parse_number_result_t result;
-    if (!text_parse_number(p, &result)) {
-      olib_free(d);
-      olib_free(values);
-      return false;
-    }
-    values[i] = result.is_float ? result.float_value : (double)result.int_value;
-  }
-
-  if (!text_parse_match(p, ']')) {
-    olib_free(d);
-    olib_free(values);
-    return false;
-  }
-
-  *ndims = dim_count;
-  *dims = d;
-  *data = values;
-  return true;
-}
-
 // #############################################################################
 // Lifecycle callbacks
 // #############################################################################
@@ -1126,7 +960,6 @@ OLIB_API olib_serializer_t* olib_serializer_new_yaml() {
     .write_struct_begin = yaml_write_struct_begin,
     .write_struct_key = yaml_write_struct_key,
     .write_struct_end = yaml_write_struct_end,
-    .write_matrix = yaml_write_matrix,
 
     .read_peek = yaml_read_peek,
     .read_int = yaml_read_int,
@@ -1139,7 +972,6 @@ OLIB_API olib_serializer_t* olib_serializer_new_yaml() {
     .read_struct_begin = yaml_read_struct_begin,
     .read_struct_key = yaml_read_struct_key,
     .read_struct_end = yaml_read_struct_end,
-    .read_matrix = yaml_read_matrix,
   };
 
   olib_serializer_t* serializer = olib_serializer_new(&config);

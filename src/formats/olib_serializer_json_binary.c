@@ -36,7 +36,6 @@ SOFTWARE.
 #define JSONB_TAG_BOOL   0x05  // bool (1 byte: 0 or 1)
 #define JSONB_TAG_LIST  0x06  // list (4-byte count + elements)
 #define JSONB_TAG_STRUCT 0x07  // struct (key-value pairs, ends with 0-length key)
-#define JSONB_TAG_MATRIX 0x08  // matrix (4-byte ndims + dims[] + data[])
 
 // #############################################################################
 // Context structure for JSON binary serialization
@@ -238,24 +237,6 @@ static bool jsonb_write_struct_end(void* ctx) {
   return jsonb_write_u32(c, 0);
 }
 
-static bool jsonb_write_matrix(void* ctx, size_t ndims, const size_t* dims, const double* data) {
-  jsonb_ctx_t* c = (jsonb_ctx_t*)ctx;
-  if (!jsonb_write_u8(c, JSONB_TAG_MATRIX)) return false;
-  if (!jsonb_write_u32(c, (uint32_t)ndims)) return false;
-
-  size_t total = 1;
-  for (size_t i = 0; i < ndims; i++) {
-    if (!jsonb_write_u32(c, (uint32_t)dims[i])) return false;
-    total *= dims[i];
-  }
-
-  for (size_t i = 0; i < total; i++) {
-    if (!jsonb_write_f64(c, data[i])) return false;
-  }
-
-  return true;
-}
-
 // #############################################################################
 // Read callbacks
 // #############################################################################
@@ -275,7 +256,6 @@ static olib_object_type_t jsonb_read_peek(void* ctx) {
     case JSONB_TAG_BOOL:   return OLIB_OBJECT_TYPE_BOOL;
     case JSONB_TAG_LIST:  return OLIB_OBJECT_TYPE_LIST;
     case JSONB_TAG_STRUCT: return OLIB_OBJECT_TYPE_STRUCT;
-    case JSONB_TAG_MATRIX: return OLIB_OBJECT_TYPE_MATRIX;
     default:               return OLIB_OBJECT_TYPE_MAX;
   }
 }
@@ -399,48 +379,6 @@ static bool jsonb_read_struct_end(void* ctx) {
   return (len == 0);
 }
 
-static bool jsonb_read_matrix(void* ctx, size_t* ndims, size_t** dims, double** data) {
-  jsonb_ctx_t* c = (jsonb_ctx_t*)ctx;
-  uint8_t tag;
-  if (!jsonb_read_u8(c, &tag) || tag != JSONB_TAG_MATRIX) return false;
-
-  uint32_t nd;
-  if (!jsonb_read_u32(c, &nd)) return false;
-
-  size_t* d = olib_malloc(nd * sizeof(size_t));
-  if (!d) return false;
-
-  size_t total = 1;
-  for (uint32_t i = 0; i < nd; i++) {
-    uint32_t dim;
-    if (!jsonb_read_u32(c, &dim)) {
-      olib_free(d);
-      return false;
-    }
-    d[i] = dim;
-    total *= dim;
-  }
-
-  double* values = olib_malloc(total * sizeof(double));
-  if (!values) {
-    olib_free(d);
-    return false;
-  }
-
-  for (size_t i = 0; i < total; i++) {
-    if (!jsonb_read_f64(c, &values[i])) {
-      olib_free(d);
-      olib_free(values);
-      return false;
-    }
-  }
-
-  *ndims = nd;
-  *dims = d;
-  *data = values;
-  return true;
-}
-
 // #############################################################################
 // Lifecycle callbacks
 // #############################################################################
@@ -520,7 +458,6 @@ OLIB_API olib_serializer_t* olib_serializer_new_json_binary() {
     .write_struct_begin = jsonb_write_struct_begin,
     .write_struct_key = jsonb_write_struct_key,
     .write_struct_end = jsonb_write_struct_end,
-    .write_matrix = jsonb_write_matrix,
 
     .read_peek = jsonb_read_peek,
     .read_int = jsonb_read_int,
@@ -533,7 +470,6 @@ OLIB_API olib_serializer_t* olib_serializer_new_json_binary() {
     .read_struct_begin = jsonb_read_struct_begin,
     .read_struct_key = jsonb_read_struct_key,
     .read_struct_end = jsonb_read_struct_end,
-    .read_matrix = jsonb_read_matrix,
   };
 
   olib_serializer_t* serializer = olib_serializer_new(&config);
