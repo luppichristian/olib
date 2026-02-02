@@ -88,18 +88,22 @@ OLIB_API bool olib_object_struct_remove(olib_object_t* obj, const char* key);
 
 // #############################################################################
 
-// Value getters
+// Value getters - return value stored in the object
+// For string getter: returns pointer to internal null-terminated string (do not free)
+// Returns appropriate default values if object is NULL or wrong type
 OLIB_API int64_t olib_object_get_int(olib_object_t* obj);
 OLIB_API uint64_t olib_object_get_uint(olib_object_t* obj);
 OLIB_API double olib_object_get_float(olib_object_t* obj);
-OLIB_API const char* olib_object_get_string(olib_object_t* obj);
+OLIB_API const char* olib_object_get_string(olib_object_t* obj);  // Returns internal string pointer (valid until object is modified/freed)
 OLIB_API bool olib_object_get_bool(olib_object_t* obj);
 
-// Value setters
+// Value setters - set value in the object (must be correct type)
+// For string setter: makes internal copy of the string
+// Returns false if object is NULL or wrong type
 OLIB_API bool olib_object_set_int(olib_object_t* obj, int64_t value);
 OLIB_API bool olib_object_set_uint(olib_object_t* obj, uint64_t value);
 OLIB_API bool olib_object_set_float(olib_object_t* obj, double value);
-OLIB_API bool olib_object_set_string(olib_object_t* obj, const char* value);
+OLIB_API bool olib_object_set_string(olib_object_t* obj, const char* value);  // Makes copy of string
 OLIB_API bool olib_object_set_bool(olib_object_t* obj, bool value);
 
 // #############################################################################

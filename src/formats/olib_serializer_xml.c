@@ -33,6 +33,16 @@ SOFTWARE.
 // Context structure for XML serialization
 // #############################################################################
 
+// Structure to hold parsed tag info
+typedef struct {
+  char tag_name[64];
+  char type_attr[32];
+  char name_attr[128];
+  char dims_attr[128];
+  bool is_self_closing;
+  bool is_closing_tag;
+} xml_tag_info_t;
+
 typedef struct {
   // Write mode
   char* write_buffer;
@@ -48,6 +58,9 @@ typedef struct {
 
   // Read mode (using shared parsing utilities)
   text_parse_ctx_t parse;
+  olib_object_type_t pending_value_type;  // Type from key/item tag attribute
+  bool has_pending_type;                   // Whether we have a pending type
+  xml_tag_info_t pending_tag_info;         // Complete tag info for matrix dims
 } xml_ctx_t;
 
 // #############################################################################
@@ -625,16 +638,6 @@ static const char* xml_parse_attribute_value(text_parse_ctx_t* p) {
   return p->temp_string;
 }
 
-// Structure to hold parsed tag info
-typedef struct {
-  char tag_name[64];
-  char type_attr[32];
-  char name_attr[128];
-  char dims_attr[128];
-  bool is_self_closing;
-  bool is_closing_tag;
-} xml_tag_info_t;
-
 // Parse an XML tag and extract attributes
 static bool xml_parse_tag(text_parse_ctx_t* p, xml_tag_info_t* info) {
   memset(info, 0, sizeof(*info));
@@ -791,6 +794,11 @@ static olib_object_type_t xml_read_peek(void* ctx) {
   xml_ctx_t* c = (xml_ctx_t*)ctx;
   text_parse_ctx_t* p = &c->parse;
 
+  // If we have a pending type from a key/item tag, return it
+  if (c->has_pending_type) {
+    return c->pending_value_type;
+  }
+
   xml_parse_skip_ws_and_comments(p);
   if (p->pos >= p->size) return OLIB_OBJECT_TYPE_MAX;
   if (p->buffer[p->pos] != '<') return OLIB_OBJECT_TYPE_MAX;
@@ -827,8 +835,14 @@ static bool xml_read_int(void* ctx, int64_t* value) {
 
   xml_parse_skip_ws_and_comments(p);
 
-  xml_tag_info_t info;
-  if (!xml_parse_tag(p, &info)) return false;
+  // If we have a pending type, we're reading from inside a key/item element
+  // so we don't need to parse an opening tag
+  if (!c->has_pending_type) {
+    xml_tag_info_t info;
+    if (!xml_parse_tag(p, &info)) return false;
+  } else {
+    c->has_pending_type = false;
+  }
 
   const char* content = xml_parse_text_content(p);
   if (!content) return false;
@@ -852,8 +866,12 @@ static bool xml_read_uint(void* ctx, uint64_t* value) {
 
   xml_parse_skip_ws_and_comments(p);
 
-  xml_tag_info_t info;
-  if (!xml_parse_tag(p, &info)) return false;
+  if (!c->has_pending_type) {
+    xml_tag_info_t info;
+    if (!xml_parse_tag(p, &info)) return false;
+  } else {
+    c->has_pending_type = false;
+  }
 
   const char* content = xml_parse_text_content(p);
   if (!content) return false;
@@ -876,8 +894,12 @@ static bool xml_read_float(void* ctx, double* value) {
 
   xml_parse_skip_ws_and_comments(p);
 
-  xml_tag_info_t info;
-  if (!xml_parse_tag(p, &info)) return false;
+  if (!c->has_pending_type) {
+    xml_tag_info_t info;
+    if (!xml_parse_tag(p, &info)) return false;
+  } else {
+    c->has_pending_type = false;
+  }
 
   const char* content = xml_parse_text_content(p);
   if (!content) return false;
@@ -900,8 +922,12 @@ static bool xml_read_string(void* ctx, const char** value) {
 
   xml_parse_skip_ws_and_comments(p);
 
-  xml_tag_info_t info;
-  if (!xml_parse_tag(p, &info)) return false;
+  if (!c->has_pending_type) {
+    xml_tag_info_t info;
+    if (!xml_parse_tag(p, &info)) return false;
+  } else {
+    c->has_pending_type = false;
+  }
 
   const char* content = xml_parse_text_content(p);
   if (!content) return false;
@@ -940,8 +966,12 @@ static bool xml_read_bool(void* ctx, bool* value) {
 
   xml_parse_skip_ws_and_comments(p);
 
-  xml_tag_info_t info;
-  if (!xml_parse_tag(p, &info)) return false;
+  if (!c->has_pending_type) {
+    xml_tag_info_t info;
+    if (!xml_parse_tag(p, &info)) return false;
+  } else {
+    c->has_pending_type = false;
+  }
 
   const char* content = xml_parse_text_content(p);
   if (!content) return false;
@@ -975,8 +1005,12 @@ static bool xml_read_array_begin(void* ctx, size_t* size) {
 
   xml_parse_skip_ws_and_comments(p);
 
-  xml_tag_info_t info;
-  if (!xml_parse_tag(p, &info)) return false;
+  if (!c->has_pending_type) {
+    xml_tag_info_t info;
+    if (!xml_parse_tag(p, &info)) return false;
+  } else {
+    c->has_pending_type = false;
+  }
 
   // Count child elements
   size_t saved_pos = p->pos;
@@ -1027,8 +1061,12 @@ static bool xml_read_struct_begin(void* ctx) {
 
   xml_parse_skip_ws_and_comments(p);
 
-  xml_tag_info_t info;
-  if (!xml_parse_tag(p, &info)) return false;
+  if (!c->has_pending_type) {
+    xml_tag_info_t info;
+    if (!xml_parse_tag(p, &info)) return false;
+  } else {
+    c->has_pending_type = false;
+  }
 
   return true;
 }
@@ -1066,9 +1104,10 @@ static bool xml_read_struct_key(void* ctx, const char** key) {
     strcpy(p->temp_string, info.name_attr);
     *key = p->temp_string;
 
-    // Now we need to parse the actual value inside the key element
-    // The type attribute tells us what to expect
-    // We need to restore state so the read_* functions work correctly
+    // Store the complete tag info and type for value reading
+    c->pending_tag_info = info;
+    c->pending_value_type = xml_get_type_from_tag(&info);
+    c->has_pending_type = true;
 
     return true;
   }
@@ -1095,7 +1134,13 @@ static bool xml_read_matrix(void* ctx, size_t* ndims, size_t** dims, double** da
   xml_parse_skip_ws_and_comments(p);
 
   xml_tag_info_t info;
-  if (!xml_parse_tag(p, &info)) return false;
+  if (!c->has_pending_type) {
+    if (!xml_parse_tag(p, &info)) return false;
+  } else {
+    // Use the pending tag info which has the dims attribute
+    info = c->pending_tag_info;
+    c->has_pending_type = false;
+  }
 
   // Parse dims attribute
   size_t dim_count = 0;
@@ -1104,7 +1149,12 @@ static bool xml_read_matrix(void* ctx, size_t* ndims, size_t** dims, double** da
   if (!d) return false;
 
   if (info.dims_attr[0]) {
-    char* dims_str = info.dims_attr;
+    // Make a copy since strtok modifies the string
+    char dims_copy[128];
+    strncpy(dims_copy, info.dims_attr, sizeof(dims_copy) - 1);
+    dims_copy[sizeof(dims_copy) - 1] = '\0';
+    
+    char* dims_str = dims_copy;
     char* token = strtok(dims_str, ",");
     while (token) {
       if (dim_count >= dim_cap) {
@@ -1235,6 +1285,10 @@ static bool xml_init_read(void* ctx, const uint8_t* data, size_t size) {
   xml_ctx_t* c = (xml_ctx_t*)ctx;
   text_parse_init(&c->parse, (const char*)data, size);
 
+  // Initialize read state
+  c->has_pending_type = false;
+  c->pending_value_type = OLIB_OBJECT_TYPE_MAX;
+
   // Skip XML declaration and comments
   xml_parse_skip_declaration(&c->parse);
   xml_parse_skip_ws_and_comments(&c->parse);
@@ -1272,6 +1326,7 @@ OLIB_API olib_serializer_t* olib_serializer_new_xml() {
 
   olib_serializer_config_t config = {
     .user_data = ctx,
+    .text_based = true,
     .free_ctx = xml_free_ctx,
     .init_write = xml_init_write,
     .finish_write = xml_finish_write,

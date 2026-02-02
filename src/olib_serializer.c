@@ -66,6 +66,14 @@ OLIB_API void olib_serializer_free(olib_serializer_t* serializer) {
     olib_free(serializer);
 }
 
+
+OLIB_API bool olib_serializer_is_text_based(olib_serializer_t* serializer) {
+    if (!serializer) {
+        return false;
+    }
+    return serializer->config.text_based;
+}
+
 // #############################################################################
 // Internal write helpers
 // #############################################################################
@@ -238,16 +246,29 @@ static olib_object_t* olib_serializer_read_object(olib_serializer_t* serializer)
             if (!obj) return NULL;
             const char* key;
             while (cfg->read_struct_key(ctx, &key)) {
-                olib_object_t* value = olib_serializer_read_object(serializer);
-                if (!value) {
+                // Make a copy of the key since it may point to a temporary buffer
+                // that gets overwritten when reading the value
+                size_t key_len = strlen(key);
+                char* key_copy = olib_malloc(key_len + 1);
+                if (!key_copy) {
                     olib_object_free(obj);
                     return NULL;
                 }
-                if (!olib_object_struct_set(obj, key, value)) {
+                memcpy(key_copy, key, key_len + 1);
+                
+                olib_object_t* value = olib_serializer_read_object(serializer);
+                if (!value) {
+                    olib_free(key_copy);
+                    olib_object_free(obj);
+                    return NULL;
+                }
+                if (!olib_object_struct_set(obj, key_copy, value)) {
+                    olib_free(key_copy);
                     olib_object_free(value);
                     olib_object_free(obj);
                     return NULL;
                 }
+                olib_free(key_copy);
             }
             if (!cfg->read_struct_end(ctx)) {
                 olib_object_free(obj);
@@ -288,6 +309,10 @@ OLIB_API bool olib_serializer_write(olib_serializer_t* serializer, olib_object_t
     if (!serializer || !obj) {
         return false;
     }
+    // This function is for non-text-based serializers only
+    if (serializer->config.text_based) {
+        return false;
+    }
     if (serializer->config.init_write) {
         if (!serializer->config.init_write(serializer->config.user_data)) {
             return false;
@@ -304,6 +329,10 @@ OLIB_API bool olib_serializer_write(olib_serializer_t* serializer, olib_object_t
 
 OLIB_API bool olib_serializer_write_string(olib_serializer_t* serializer, olib_object_t* obj, char** out_string) {
     if (!serializer || !obj) {
+        return false;
+    }
+    // This function is for text-based serializers only
+    if (!serializer->config.text_based) {
         return false;
     }
     if (serializer->config.init_write) {
@@ -361,7 +390,8 @@ OLIB_API bool olib_serializer_write_file_path(olib_serializer_t* serializer, oli
     if (!serializer || !obj || !file_path) {
         return false;
     }
-    FILE* file = fopen(file_path, "wb");
+    const char* mode = serializer->config.text_based ? "w" : "wb";
+    FILE* file = fopen(file_path, mode);
     if (!file) {
         return false;
     }
@@ -378,6 +408,10 @@ OLIB_API olib_object_t* olib_serializer_read(olib_serializer_t* serializer, cons
     if (!serializer || !data || size == 0) {
         return NULL;
     }
+    // This function is for non-text-based serializers only
+    if (serializer->config.text_based) {
+        return NULL;
+    }
     if (serializer->config.init_read) {
         if (!serializer->config.init_read(serializer->config.user_data, data, size)) {
             return NULL;
@@ -392,6 +426,10 @@ OLIB_API olib_object_t* olib_serializer_read(olib_serializer_t* serializer, cons
 
 OLIB_API olib_object_t* olib_serializer_read_string(olib_serializer_t* serializer, const char* string) {
     if (!serializer || !string) {
+        return NULL;
+    }
+    // This function is for text-based serializers only
+    if (!serializer->config.text_based) {
         return NULL;
     }
     if (serializer->config.init_read) {
@@ -445,7 +483,8 @@ OLIB_API olib_object_t* olib_serializer_read_file_path(olib_serializer_t* serial
     if (!serializer || !file_path) {
         return NULL;
     }
-    FILE* file = fopen(file_path, "rb");
+    const char* mode = serializer->config.text_based ? "r" : "rb";
+    FILE* file = fopen(file_path, mode);
     if (!file) {
         return NULL;
     }

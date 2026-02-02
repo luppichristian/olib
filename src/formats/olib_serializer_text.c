@@ -419,6 +419,12 @@ static olib_object_type_t text_read_peek(void* ctx) {
   text_parse_ctx_t* p = &c->parse;
   text_parse_skip_whitespace_and_comments(p);
 
+  // Skip comma if present (between array/struct elements)
+  if (p->pos < p->size && p->buffer[p->pos] == ',') {
+    p->pos++;
+    text_parse_skip_whitespace_and_comments(p);
+  }
+
   if (text_parse_eof(p)) {
     return OLIB_OBJECT_TYPE_MAX;
   }
@@ -850,6 +856,7 @@ OLIB_API olib_serializer_t* olib_serializer_new_txt() {
 
   olib_serializer_config_t config = {
     .user_data = ctx,
+    .text_based = true,
     .free_ctx = text_free_ctx,
     .init_write = text_init_write,
     .finish_write = text_finish_write,

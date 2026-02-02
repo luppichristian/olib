@@ -503,6 +503,7 @@ OLIB_API olib_serializer_t* olib_serializer_new_binary() {
 
   olib_serializer_config_t config = {
     .user_data = ctx,
+    .text_based = false,
     .free_ctx = binary_free_ctx,
     .init_write = binary_init_write,
     .finish_write = binary_finish_write,

@@ -40,7 +40,9 @@ OLIB_API olib_serializer_t* olib_format_serializer(olib_format_t format);
 // Write object to memory buffer (caller must free out_data with olib_free)
 OLIB_API bool olib_format_write(olib_format_t format, olib_object_t* obj, uint8_t** out_data, size_t* out_size);
 
-// Write object to string (caller must free out_string with olib_free)
+// Write object to null-terminated string (caller must free out_string with olib_free)
+// Only use with text-based formats (JSON_TEXT, YAML, XML, TOML, TXT)
+// For binary formats, use olib_format_write() instead
 OLIB_API bool olib_format_write_string(olib_format_t format, olib_object_t* obj, char** out_string);
 
 // Write object to FILE*
@@ -56,7 +58,9 @@ OLIB_API bool olib_format_write_file_path(olib_format_t format, olib_object_t* o
 // Read object from memory buffer (caller must free returned object with olib_object_free)
 OLIB_API olib_object_t* olib_format_read(olib_format_t format, const uint8_t* data, size_t size);
 
-// Read object from string (caller must free returned object with olib_object_free)
+// Read object from null-terminated string (caller must free returned object with olib_object_free)
+// Only use with text-based formats (JSON_TEXT, YAML, XML, TOML, TXT)
+// For binary formats, use olib_format_read() instead
 OLIB_API olib_object_t* olib_format_read_string(olib_format_t format, const char* string);
 
 // Read object from FILE* (caller must free returned object with olib_object_free)
@@ -71,23 +75,36 @@ OLIB_API olib_object_t* olib_format_read_file_path(olib_format_t format, const c
 
 // Convert memory buffer from one format to another (caller must free out_data with olib_free)
 OLIB_API bool olib_convert(
-    olib_format_t src_format, const uint8_t* src_data, size_t src_size,
-    olib_format_t dst_format, uint8_t** out_data, size_t* out_size);
+    olib_format_t src_format,
+    const uint8_t* src_data,
+    size_t src_size,
+    olib_format_t dst_format,
+    uint8_t** out_data,
+    size_t* out_size);
 
-// Convert string from one format to another (caller must free out_string with olib_free)
+// Convert between text-based formats (caller must free out_string with olib_free)
+// Both src_format and dst_format must be text-based (JSON_TEXT, YAML, XML, TOML, TXT)
+// For binary source data, use olib_convert() which accepts size parameter
+// For binary destination, use olib_convert() which provides size in output
 OLIB_API bool olib_convert_string(
-    olib_format_t src_format, const char* src_string,
-    olib_format_t dst_format, char** out_string);
+    olib_format_t src_format,
+    const char* src_string,
+    olib_format_t dst_format,
+    char** out_string);
 
 // Convert file from one format to another
 OLIB_API bool olib_convert_file(
-    olib_format_t src_format, FILE* src_file,
-    olib_format_t dst_format, FILE* dst_file);
+    olib_format_t src_format,
+    FILE* src_file,
+    olib_format_t dst_format,
+    FILE* dst_file);
 
 // Convert file path from one format to another
 OLIB_API bool olib_convert_file_path(
-    olib_format_t src_format, const char* src_path,
-    olib_format_t dst_format, const char* dst_path);
+    olib_format_t src_format,
+    const char* src_path,
+    olib_format_t dst_format,
+    const char* dst_path);
 
 // #############################################################################
 OLIB_HEADER_END;

@@ -108,6 +108,11 @@ if(OLIB_BUILD_TESTS)
         ${OLIB_TEST_SOURCES}
     )
 
+    target_include_directories(olib-tests
+        PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests
+    )
+
     target_link_libraries(olib-tests
         PRIVATE
             ${OLIB_TARGET}

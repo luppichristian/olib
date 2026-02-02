@@ -602,6 +602,12 @@ static olib_object_type_t json_read_peek(void* ctx) {
   text_parse_ctx_t* p = &c->parse;
   json_skip_whitespace(p);
 
+  // Skip comma if present (between array/object elements)
+  if (p->pos < p->size && p->buffer[p->pos] == ',') {
+    p->pos++;
+    json_skip_whitespace(p);
+  }
+
   if (p->pos >= p->size) {
     return OLIB_OBJECT_TYPE_MAX;
   }
@@ -1109,6 +1115,7 @@ OLIB_API olib_serializer_t* olib_serializer_new_json_text() {
 
   olib_serializer_config_t config = {
     .user_data = ctx,
+    .text_based = true,
     .free_ctx = json_free_ctx,
     .init_write = json_init_write,
     .finish_write = json_finish_write,

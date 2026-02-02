@@ -514,38 +514,107 @@ OLIB_API bool olib_object_struct_remove(olib_object_t* obj, const char* key) {
 // #############################################################################
 
 OLIB_API int64_t olib_object_get_int(olib_object_t* obj) {
-    if (!obj || obj->type != OLIB_OBJECT_TYPE_INT) {
+    if (!obj) {
         return 0;
     }
-    return obj->data.int_val;
+    switch (obj->type) {
+        case OLIB_OBJECT_TYPE_INT:
+            return obj->data.int_val;
+        case OLIB_OBJECT_TYPE_UINT:
+            return (int64_t)obj->data.uint_val;
+        case OLIB_OBJECT_TYPE_FLOAT:
+            return (int64_t)obj->data.float_val;
+        case OLIB_OBJECT_TYPE_BOOL:
+            return obj->data.bool_val ? 1 : 0;
+        case OLIB_OBJECT_TYPE_STRING:
+            if (obj->data.string_val) {
+                return strtoll(obj->data.string_val, NULL, 10);
+            }
+            return 0;
+        default:
+            return 0;
+    }
 }
 
 OLIB_API uint64_t olib_object_get_uint(olib_object_t* obj) {
-    if (!obj || obj->type != OLIB_OBJECT_TYPE_UINT) {
+    if (!obj) {
         return 0;
     }
-    return obj->data.uint_val;
+    switch (obj->type) {
+        case OLIB_OBJECT_TYPE_UINT:
+            return obj->data.uint_val;
+        case OLIB_OBJECT_TYPE_INT:
+            return (uint64_t)obj->data.int_val;
+        case OLIB_OBJECT_TYPE_FLOAT:
+            return (uint64_t)obj->data.float_val;
+        case OLIB_OBJECT_TYPE_BOOL:
+            return obj->data.bool_val ? 1 : 0;
+        case OLIB_OBJECT_TYPE_STRING:
+            if (obj->data.string_val) {
+                return strtoull(obj->data.string_val, NULL, 10);
+            }
+            return 0;
+        default:
+            return 0;
+    }
 }
 
 OLIB_API double olib_object_get_float(olib_object_t* obj) {
-    if (!obj || obj->type != OLIB_OBJECT_TYPE_FLOAT) {
+    if (!obj) {
         return 0.0;
     }
-    return obj->data.float_val;
+    switch (obj->type) {
+        case OLIB_OBJECT_TYPE_FLOAT:
+            return obj->data.float_val;
+        case OLIB_OBJECT_TYPE_INT:
+            return (double)obj->data.int_val;
+        case OLIB_OBJECT_TYPE_UINT:
+            return (double)obj->data.uint_val;
+        case OLIB_OBJECT_TYPE_BOOL:
+            return obj->data.bool_val ? 1.0 : 0.0;
+        case OLIB_OBJECT_TYPE_STRING:
+            if (obj->data.string_val) {
+                return strtod(obj->data.string_val, NULL);
+            }
+            return 0.0;
+        default:
+            return 0.0;
+    }
 }
 
 OLIB_API const char* olib_object_get_string(olib_object_t* obj) {
-    if (!obj || obj->type != OLIB_OBJECT_TYPE_STRING) {
+    if (!obj) {
         return NULL;
     }
-    return obj->data.string_val;
+    // Only return actual string values, no conversion for string getter
+    if (obj->type == OLIB_OBJECT_TYPE_STRING) {
+        return obj->data.string_val;
+    }
+    return NULL;
 }
 
 OLIB_API bool olib_object_get_bool(olib_object_t* obj) {
-    if (!obj || obj->type != OLIB_OBJECT_TYPE_BOOL) {
+    if (!obj) {
         return false;
     }
-    return obj->data.bool_val;
+    switch (obj->type) {
+        case OLIB_OBJECT_TYPE_BOOL:
+            return obj->data.bool_val;
+        case OLIB_OBJECT_TYPE_INT:
+            return obj->data.int_val != 0;
+        case OLIB_OBJECT_TYPE_UINT:
+            return obj->data.uint_val != 0;
+        case OLIB_OBJECT_TYPE_FLOAT:
+            return obj->data.float_val != 0.0;
+        case OLIB_OBJECT_TYPE_STRING:
+            if (obj->data.string_val) {
+                return strcmp(obj->data.string_val, "true") == 0 ||
+                       strcmp(obj->data.string_val, "1") == 0;
+            }
+            return false;
+        default:
+            return false;
+    }
 }
 
 // #############################################################################

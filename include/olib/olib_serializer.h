@@ -34,6 +34,7 @@ typedef struct olib_serializer_t olib_serializer_t;
 
 typedef struct olib_serializer_config_t {
   void* user_data;
+  bool text_based;
 
   // Lifecycle callbacks
   void (*init_ctx)(void* ctx);  // Called after serializer creation (optional initialization)
@@ -75,18 +76,35 @@ typedef struct olib_serializer_config_t {
 OLIB_API olib_serializer_t* olib_serializer_new(olib_serializer_config_t* config);
 OLIB_API void olib_serializer_free(olib_serializer_t* serializer);
 
+// Check if a serializer is configured as text-based
+OLIB_API bool olib_serializer_is_text_based(olib_serializer_t* serializer);
+
 // #############################################################################
 
 // Writing objects
+// olib_serializer_write: For binary serializers only (returns false if serializer is text-based)
 OLIB_API bool olib_serializer_write(olib_serializer_t* serializer, olib_object_t* obj, uint8_t** out_data, size_t* out_size);
+
+// olib_serializer_write_string: For text-based serializers only (returns false if serializer is binary)
 OLIB_API bool olib_serializer_write_string(olib_serializer_t* serializer, olib_object_t* obj, char** out_string);
+
+// olib_serializer_write_file: Works with both text and binary serializers (opens file in appropriate mode)
 OLIB_API bool olib_serializer_write_file(olib_serializer_t* serializer, olib_object_t* obj, FILE* file);
+
+// olib_serializer_write_file_path: Works with both text and binary serializers (opens file in appropriate mode)
 OLIB_API bool olib_serializer_write_file_path(olib_serializer_t* serializer, olib_object_t* obj, const char* file_path);
 
 // Reading objects
+// olib_serializer_read: For binary serializers only (returns NULL if serializer is text-based)
 OLIB_API olib_object_t* olib_serializer_read(olib_serializer_t* serializer, const uint8_t* data, size_t size);
+
+// olib_serializer_read_string: For text-based serializers only (returns NULL if serializer is binary)
 OLIB_API olib_object_t* olib_serializer_read_string(olib_serializer_t* serializer, const char* string);
+
+// olib_serializer_read_file: Works with both text and binary serializers (reads file in appropriate mode)
 OLIB_API olib_object_t* olib_serializer_read_file(olib_serializer_t* serializer, FILE* file);
+
+// olib_serializer_read_file_path: Works with both text and binary serializers (opens file in appropriate mode)
 OLIB_API olib_object_t* olib_serializer_read_file_path(olib_serializer_t* serializer, const char* file_path);
 
 // #############################################################################

@@ -28,6 +28,7 @@ SOFTWARE.
 // Format to serializer mapping
 // #############################################################################
 
+
 OLIB_API olib_serializer_t* olib_format_serializer(olib_format_t format) {
     switch (format) {
         case OLIB_FORMAT_JSON_TEXT:   return olib_serializer_new_json_text();
@@ -55,6 +56,7 @@ OLIB_API bool olib_format_write(olib_format_t format, olib_object_t* obj, uint8_
         return false;
     }
 
+    // olib_serializer_write validates that the serializer is not text-based
     bool result = olib_serializer_write(serializer, obj, out_data, out_size);
     olib_serializer_free(serializer);
     return result;
@@ -70,6 +72,7 @@ OLIB_API bool olib_format_write_string(olib_format_t format, olib_object_t* obj,
         return false;
     }
 
+    // olib_serializer_write_string validates that the serializer is text-based
     bool result = olib_serializer_write_string(serializer, obj, out_string);
     olib_serializer_free(serializer);
     return result;
@@ -119,6 +122,7 @@ OLIB_API olib_object_t* olib_format_read(olib_format_t format, const uint8_t* da
         return NULL;
     }
 
+    // olib_serializer_read validates that the serializer is not text-based
     olib_object_t* result = olib_serializer_read(serializer, data, size);
     olib_serializer_free(serializer);
     return result;
@@ -134,6 +138,7 @@ OLIB_API olib_object_t* olib_format_read_string(olib_format_t format, const char
         return NULL;
     }
 
+    // olib_serializer_read_string validates that the serializer is text-based
     olib_object_t* result = olib_serializer_read_string(serializer, string);
     olib_serializer_free(serializer);
     return result;
@@ -181,14 +186,44 @@ OLIB_API bool olib_convert(
         return false;
     }
 
+    // Create serializers to check if they're text-based
+    olib_serializer_t* src_ser = olib_format_serializer(src_format);
+    if (!src_ser) {
+        return false;
+    }
+    bool src_is_text = olib_serializer_is_text_based(src_ser);
+    olib_serializer_free(src_ser);
+
+    olib_serializer_t* dst_ser = olib_format_serializer(dst_format);
+    if (!dst_ser) {
+        return false;
+    }
+    bool dst_is_text = olib_serializer_is_text_based(dst_ser);
+    olib_serializer_free(dst_ser);
+
     // Read from source format
-    olib_object_t* obj = olib_format_read(src_format, src_data, src_size);
+    olib_object_t* obj = NULL;
+    if (src_is_text) {
+        obj = olib_format_read_string(src_format, (const char*)src_data);
+    } else {
+        obj = olib_format_read(src_format, src_data, src_size);
+    }
     if (!obj) {
         return false;
     }
 
     // Write to destination format
-    bool result = olib_format_write(dst_format, obj, out_data, out_size);
+    bool result = false;
+    if (dst_is_text) {
+        char* str = NULL;
+        result = olib_format_write_string(dst_format, obj, &str);
+        if (result) {
+            *out_data = (uint8_t*)str;
+            *out_size = strlen(str);
+        }
+    } else {
+        result = olib_format_write(dst_format, obj, out_data, out_size);
+    }
     olib_object_free(obj);
     return result;
 }

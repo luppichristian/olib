@@ -495,6 +495,12 @@ static olib_object_type_t toml_read_peek(void* ctx) {
   text_parse_ctx_t* p = &c->parse;
   toml_skip_whitespace_and_comments(p);
 
+  // Skip comma if present (between array/inline table elements)
+  if (p->pos < p->size && p->buffer[p->pos] == ',') {
+    p->pos++;
+    toml_skip_whitespace_and_comments(p);
+  }
+
   if (text_parse_eof(p)) {
     return OLIB_OBJECT_TYPE_MAX;
   }
@@ -545,6 +551,23 @@ static olib_object_type_t toml_read_peek(void* ctx) {
         return OLIB_OBJECT_TYPE_BOOL;
       }
     }
+  }
+
+  // Check if this looks like a key = value pair (implicit struct/table)
+  // This handles the case where a top-level struct is serialized as key-value pairs
+  if (text_parse_is_identifier_char(ch)) {
+    size_t saved_pos = p->pos;
+    // Try to parse a key
+    const char* key = toml_parse_key(p);
+    if (key) {
+      toml_skip_whitespace_and_comments(p);
+      if (p->pos < p->size && p->buffer[p->pos] == '=') {
+        // This is a key=value pair, indicating a struct
+        p->pos = saved_pos;
+        return OLIB_OBJECT_TYPE_STRUCT;
+      }
+    }
+    p->pos = saved_pos;
   }
 
   return OLIB_OBJECT_TYPE_MAX;
@@ -939,6 +962,7 @@ OLIB_API olib_serializer_t* olib_serializer_new_toml() {
 
   olib_serializer_config_t config = {
     .user_data = ctx,
+    .text_based = true,
     .free_ctx = toml_free_ctx,
     .init_write = toml_init_write,
     .finish_write = toml_finish_write,
