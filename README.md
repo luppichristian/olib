@@ -28,21 +28,9 @@ olib provides a unified API for working with structured data objects and seriali
 | `OLIB_BUILD_EXAMPLES` | `ON` | Build example programs |
 | `OLIB_GTEST_FETCH` | `ON` | Auto-fetch GoogleTest if not found |
 
-## Quick Start
+## Documentation
 
-```bash
-# Clone and build
-git clone https://github.com/user/olib.git
-cd olib
-cmake -B build
-cmake --build build
-
-# Run tests
-ctest --test-dir build
-
-# Install
-cmake --install build --prefix /usr/local
-```
+See [docs](https://luppichristian.github.io/olib/) for comprehensive API documentation and usage patterns.
 
 ## Usage
 
@@ -121,25 +109,6 @@ int main(void) {
     return 0;
 }
 ```
-
-## Documentation
-
-See [docs/](docs/) for comprehensive API documentation:
-
-- [Getting Started](docs/getting-started.md) - Installation and basic concepts
-- [API Reference](docs/api/) - Detailed module documentation
-
-## Examples
-
-See the [examples/](examples/) directory for complete working examples:
-
-- `basic.c` - Object creation and manipulation
-- `json.c` - JSON serialization and parsing
-- `yaml.c` - YAML format handling
-- `xml.c` - XML format handling
-- `toml.c` - TOML format handling
-- `text.c` - Plain text format
-- `binary.c` - Compact binary serialization
 
 ## License
 
