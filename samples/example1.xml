@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root>
+  <int_value type="int">-42</int_value>
+  <uint_value type="uint">12345</uint_value>
+  <float_value type="float">3.14159</float_value>
+  <string_value type="string">Hello, World!</string_value>
+  <bool_value type="bool">true</bool_value>
+  <array_simple type="array">
+    <item type="int">100</item>
+    <item type="int">200</item>
+    <item type="int">300</item>
+  </array_simple>
+  <array_mixed type="array">
+    <item type="struct">
+      <name type="string">Alice</name>
+      <age type="int">30</age>
+    </item>
+    <item type="struct">
+      <name type="string">Bob</name>
+      <age type="int">25</age>
+    </item>
+  </array_mixed>
+  <nested_struct type="struct">
+    <nested_int type="int">999</nested_int>
+    <nested_float type="float">2.71828</nested_float>
+    <nested_bool type="bool">false</nested_bool>
+    <nested_string type="string">Nested value</nested_string>
+  </nested_struct>
+  <matrix_2d type="matrix">
+    <dims>2 3</dims>
+    <data>1.0 2.0 3.0 4.0 5.0 6.0</data>
+  </matrix_2d>
+</root>

@@ -1,0 +1,55 @@
+{
+  "person": {
+    "name": "John Doe",
+    "age": 35,
+    "height": 1.85,
+    "is_active": true,
+    "email": "john.doe@example.com"
+  },
+  "numbers": {
+    "int_min": -9223372036854775808,
+    "int_max": 9223372036854775807,
+    "uint_max": 18446744073709551615,
+    "float_pi": 3.141592653589793,
+    "float_e": 2.718281828459045
+  },
+  "flags": {
+    "enabled": true,
+    "disabled": false,
+    "active": true
+  },
+  "data_array": [
+    1,
+    2,
+    3,
+    5,
+    8,
+    13,
+    21,
+    34
+  ],
+  "string_array": [
+    "red",
+    "green",
+    "blue"
+  ],
+  "matrix_3d": {
+    "dims": [
+      2,
+      2,
+      2
+    ],
+    "data": [
+      1.0,
+      2.0,
+      3.0,
+      4.0,
+      5.0,
+      6.0,
+      7.0,
+      8.0
+    ]
+  },
+  "empty_array": [],
+  "empty_struct": {}
+}

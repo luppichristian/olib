@@ -33,16 +33,19 @@ OLIB_HEADER_BEGIN;
 typedef struct olib_serializer_t olib_serializer_t;
 
 typedef struct olib_serializer_config_t {
+  // Internal user data pointer for serializer context
   void* user_data;
+
+  // Are we a text-based serializer?
   bool text_based;
 
   // Lifecycle callbacks
-  void (*init_ctx)(void* ctx);  // Called after serializer creation (optional initialization)
-  void (*free_ctx)(void* ctx);  // Called when serializer is freed
-  bool (*init_write)(void* ctx);  // Reset/prepare for writing
+  void (*init_ctx)(void* ctx);                                            // Called after serializer creation (optional initialization)
+  void (*free_ctx)(void* ctx);                                            // Called when serializer is freed
+  bool (*init_write)(void* ctx);                                          // Reset/prepare for writing
   bool (*finish_write)(void* ctx, uint8_t** out_data, size_t* out_size);  // Get write buffer (caller frees)
-  bool (*init_read)(void* ctx, const uint8_t* data, size_t size);  // Set up read buffer
-  bool (*finish_read)(void* ctx);  // Cleanup after reading
+  bool (*init_read)(void* ctx, const uint8_t* data, size_t size);         // Set up read buffer
+  bool (*finish_read)(void* ctx);                                         // Cleanup after reading
 
   // Write callbacks (return false on error)
   bool (*write_int)(void* ctx, int64_t value);

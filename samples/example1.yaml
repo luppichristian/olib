@@ -1,0 +1,22 @@
+int_value: -42
+uint_value: 12345
+float_value: 3.14159
+string_value: "Hello, World!"
+bool_value: true
+array_simple:
+  - 100
+  - 200
+  - 300
+array_mixed:
+  - name: "Alice"
+    age: 30
+  - name: "Bob"
+    age: 25
+nested_struct:
+  nested_int: 999
+  nested_float: 2.71828
+  nested_bool: false
+  nested_string: "Nested value"
+matrix_2d:
+  dims: [2, 3]
+  data: [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
