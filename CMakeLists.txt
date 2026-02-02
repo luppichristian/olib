@@ -8,6 +8,7 @@ project(olib VERSION 1.0.0 LANGUAGES C CXX)
 option(OLIB_BUILD_SHARED "Build olib as a shared library" OFF)
 option(OLIB_BUILD_TESTS "Build olib tests" ON)
 option(OLIB_BUILD_EXAMPLES "Build olib examples" ON)
+option(OLIB_BUILD_CLI "Build olib-convert CLI utility" ON)
 option(OLIB_GTEST_FETCH "Fetch GoogleTest if not found" ON)
 
 #
@@ -167,6 +168,38 @@ if(OLIB_BUILD_EXAMPLES)
     endforeach()
 
     message(STATUS "Building examples")
+endif()
+
+#
+# CLI Utility (Optional)
+#
+
+if(OLIB_BUILD_CLI)
+    add_executable(olib-convert
+        ${CMAKE_CURRENT_SOURCE_DIR}/cli/main.c
+    )
+
+    target_include_directories(olib-convert
+        PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/include
+    )
+
+    target_link_libraries(olib-convert
+        PRIVATE
+            ${OLIB_TARGET}
+    )
+
+    # Set output directory for CLI utility
+    set_target_properties(olib-convert PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+
+    # Install the CLI utility
+    install(TARGETS olib-convert
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    )
+
+    message(STATUS "Building CLI utility (olib-convert)")
 endif()
 
 #
