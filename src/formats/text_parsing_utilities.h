@@ -111,6 +111,7 @@ const char* text_parse_identifier(text_parse_ctx_t* ctx);
 typedef struct {
   double float_value;
   int64_t int_value;
+  uint64_t uint_value;
   bool is_float;
   bool is_negative;
 } text_parse_number_result_t;

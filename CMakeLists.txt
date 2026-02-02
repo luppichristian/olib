@@ -7,6 +7,7 @@ project(olib VERSION 1.0.0 LANGUAGES C CXX)
 
 option(OLIB_BUILD_SHARED "Build olib as a shared library" OFF)
 option(OLIB_BUILD_TESTS "Build olib tests" ON)
+option(OLIB_BUILD_EXAMPLES "Build olib examples" ON)
 option(OLIB_GTEST_FETCH "Fetch GoogleTest if not found" ON)
 
 #
@@ -120,9 +121,52 @@ if(OLIB_BUILD_TESTS)
     )
 
     include(GoogleTest)
-    gtest_discover_tests(olib-tests)
+    gtest_discover_tests(olib-tests
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    )
 
     message(STATUS "Building tests with GoogleTest")
+endif()
+
+#
+# Examples (Optional)
+#
+
+if(OLIB_BUILD_EXAMPLES)
+    # List of example programs
+    set(EXAMPLE_PROGRAMS
+        basic
+        json
+        yaml
+        xml
+        toml
+        text
+        binary
+    )
+
+    # Create executable for each example
+    foreach(example ${EXAMPLE_PROGRAMS})
+        add_executable(olib-example-${example}
+            ${CMAKE_CURRENT_SOURCE_DIR}/examples/${example}.c
+        )
+
+        target_include_directories(olib-example-${example}
+            PRIVATE
+                ${CMAKE_CURRENT_SOURCE_DIR}/examples
+        )
+
+        target_link_libraries(olib-example-${example}
+            PRIVATE
+                ${OLIB_TARGET}
+        )
+
+        # Set output directory for examples
+        set_target_properties(olib-example-${example} PROPERTIES
+            RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+        )
+    endforeach()
+
+    message(STATUS "Building examples")
 endif()
 
 #

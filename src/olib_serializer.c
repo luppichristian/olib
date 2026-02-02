@@ -455,8 +455,8 @@ OLIB_API olib_object_t* olib_serializer_read_file_path(olib_serializer_t* serial
     if (!serializer || !file_path) {
         return NULL;
     }
-    const char* mode = serializer->config.text_based ? "r" : "rb";
-    FILE* file = fopen(file_path, mode);
+    // Always use binary mode to avoid line ending translation issues on Windows
+    FILE* file = fopen(file_path, "rb");
     if (!file) {
         return NULL;
     }

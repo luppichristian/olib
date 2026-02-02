@@ -492,6 +492,7 @@ static void xml_parse_skip_ws_and_comments(text_parse_ctx_t* p) {
     size_t old_pos = p->pos;
     xml_parse_skip_whitespace(p);
     xml_parse_skip_comments(p);
+    xml_parse_skip_declaration(p);
     if (p->pos == old_pos) break;
   }
 }
@@ -745,9 +746,8 @@ static olib_object_type_t xml_read_peek(void* ctx) {
 
   // Skip root or closing tags during peek
   if (strcmp(info.tag_name, "olib") == 0 || strcmp(info.tag_name, "root") == 0) {
-    // Actually consume the root tag
-    xml_parse_tag(p, &info);
-    return xml_read_peek(ctx);
+    // The root element IS a struct
+    return OLIB_OBJECT_TYPE_STRUCT;
   }
 
   if (info.is_closing_tag) {
@@ -1022,25 +1022,24 @@ static bool xml_read_struct_key(void* ctx, const char** key) {
   // Restore position - the actual value reading will consume the tag
   p->pos = saved_pos;
 
-  // For struct keys, we need to peek at the <key name="..."> tag
+  // For struct keys, we need to peek at the tag
   if (!xml_parse_tag(p, &info)) return false;
 
-  if (info.name_attr[0]) {
-    // Make a copy of the name
-    size_t len = strlen(info.name_attr);
-    if (!text_parse_ensure_temp(p, len + 1)) return false;
-    strcpy(p->temp_string, info.name_attr);
-    *key = p->temp_string;
+  // Use name attribute if present, otherwise use tag name as the key
+  const char* key_source = info.name_attr[0] ? info.name_attr : info.tag_name;
+  
+  // Make a copy of the key
+  size_t len = strlen(key_source);
+  if (!text_parse_ensure_temp(p, len + 1)) return false;
+  strcpy(p->temp_string, key_source);
+  *key = p->temp_string;
 
-    // Store the complete tag info and type for value reading
-    c->pending_tag_info = info;
-    c->pending_value_type = xml_get_type_from_tag(&info);
-    c->has_pending_type = true;
+  // Store the complete tag info and type for value reading
+  c->pending_tag_info = info;
+  c->pending_value_type = xml_get_type_from_tag(&info);
+  c->has_pending_type = true;
 
-    return true;
-  }
-
-  return false;
+  return true;
 }
 
 static bool xml_read_struct_end(void* ctx) {

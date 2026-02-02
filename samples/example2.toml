@@ -1,24 +1,7 @@
-[person]
-name = "John Doe"
-age = 35
-height = 1.85
-is_active = true
-email = "john.doe@example.com"
-
-[numbers]
-int_min = -9223372036854775808
-int_max = 9223372036854775807
-uint_max = 18446744073709551615
-float_pi = 3.141592653589793
-float_e = 2.718281828459045
-
-[flags]
-enabled = true
-disabled = false
-active = true
-
+person = {name = "John Doe", age = 35, height = 1.85, is_active = true, email = "john.doe@example.com"}
+numbers = {int_min = -9223372036854775808, int_max = 9223372036854775807, uint_max = 18446744073709551615, float_pi = 3.141592653589793, float_e = 2.718281828459045}
+flags = {enabled = true, disabled = false, active = true}
 data_list = [1, 2, 3, 5, 8, 13, 21, 34]
 string_list = ["red", "green", "blue"]
-
 empty_list = []
 empty_struct = {}

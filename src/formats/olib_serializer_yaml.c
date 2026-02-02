@@ -52,6 +52,8 @@ typedef struct {
   // Read mode (using shared parsing utilities)
   text_parse_ctx_t parse;
   int read_indent_level;
+  bool reading_block_list;  // Track if we're currently reading items from a block list
+  int block_list_indent;    // Indentation level of the block list we're reading
 } yaml_ctx_t;
 
 // #############################################################################
@@ -510,6 +512,19 @@ static const char* yaml_parse_unquoted_value(text_parse_ctx_t* ctx) {
   return ctx->temp_string;
 }
 
+// Helper to skip block list item prefix "- " if we're reading inside a block list
+static void yaml_skip_block_list_prefix(yaml_ctx_t* c) {
+  text_parse_ctx_t* p = &c->parse;
+  text_parse_skip_whitespace_and_comments(p);
+  
+  if (c->reading_block_list && p->pos < p->size && p->buffer[p->pos] == '-') {
+    if (p->pos + 1 < p->size && (p->buffer[p->pos + 1] == ' ' || p->buffer[p->pos + 1] == '\n')) {
+      p->pos += 2;
+      text_parse_skip_whitespace(p);
+    }
+  }
+}
+
 // #############################################################################
 // Read callbacks
 // #############################################################################
@@ -530,11 +545,28 @@ static olib_object_type_t yaml_read_peek(void* ctx) {
   }
 
   char ch = text_parse_peek_raw(p);
+  
+  // For peeking inside block list, we need to look past "- " without consuming it
+  size_t peek_pos = p->pos;
+  if (c->reading_block_list && ch == '-' && 
+      p->pos + 1 < p->size && (p->buffer[p->pos + 1] == ' ' || p->buffer[p->pos + 1] == '\n')) {
+    // Look past "- " to see actual value type
+    peek_pos += 2;
+    while (peek_pos < p->size && (p->buffer[peek_pos] == ' ' || p->buffer[peek_pos] == '\t')) {
+      peek_pos++;
+    }
+    if (peek_pos < p->size) {
+      ch = p->buffer[peek_pos];
+    } else {
+      return OLIB_OBJECT_TYPE_MAX;
+    }
+  }
 
-  // Check for block list item
+  // Check for block list item start (not inside block list yet)
   if (ch == '-') {
     // Check if it's "- " (list item) or a negative number
-    if (p->pos + 1 < p->size && (p->buffer[p->pos + 1] == ' ' || p->buffer[p->pos + 1] == '\n')) {
+    if (peek_pos + 1 < p->size && (p->buffer[peek_pos + 1] == ' ' || p->buffer[peek_pos + 1] == '\n')) {
+      // This starts a new block list
       return OLIB_OBJECT_TYPE_LIST;
     }
   }
@@ -557,7 +589,7 @@ static olib_object_type_t yaml_read_peek(void* ctx) {
   // Number (possibly negative)
   if (ch == '-' || ch == '+' || isdigit((unsigned char)ch)) {
     // Look ahead to see if it's int or float
-    size_t pos = p->pos;
+    size_t pos = peek_pos;
     if (ch == '-' || ch == '+') pos++;
     while (pos < p->size && isdigit((unsigned char)p->buffer[pos])) {
       pos++;
@@ -570,52 +602,53 @@ static olib_object_type_t yaml_read_peek(void* ctx) {
 
   // Boolean
   if (ch == 't' || ch == 'T') {
-    if ((p->pos + 4 <= p->size && strncmp(p->buffer + p->pos, "true", 4) == 0) ||
-        (p->pos + 4 <= p->size && strncmp(p->buffer + p->pos, "True", 4) == 0) ||
-        (p->pos + 4 <= p->size && strncmp(p->buffer + p->pos, "TRUE", 4) == 0)) {
+    if ((peek_pos + 4 <= p->size && strncmp(p->buffer + peek_pos, "true", 4) == 0) ||
+        (peek_pos + 4 <= p->size && strncmp(p->buffer + peek_pos, "True", 4) == 0) ||
+        (peek_pos + 4 <= p->size && strncmp(p->buffer + peek_pos, "TRUE", 4) == 0)) {
       return OLIB_OBJECT_TYPE_BOOL;
     }
   }
   if (ch == 'f' || ch == 'F') {
-    if ((p->pos + 5 <= p->size && strncmp(p->buffer + p->pos, "false", 5) == 0) ||
-        (p->pos + 5 <= p->size && strncmp(p->buffer + p->pos, "False", 5) == 0) ||
-        (p->pos + 5 <= p->size && strncmp(p->buffer + p->pos, "FALSE", 5) == 0)) {
+    if ((peek_pos + 5 <= p->size && strncmp(p->buffer + peek_pos, "false", 5) == 0) ||
+        (peek_pos + 5 <= p->size && strncmp(p->buffer + peek_pos, "False", 5) == 0) ||
+        (peek_pos + 5 <= p->size && strncmp(p->buffer + peek_pos, "FALSE", 5) == 0)) {
       return OLIB_OBJECT_TYPE_BOOL;
     }
   }
   if (ch == 'y' || ch == 'Y') {
-    if ((p->pos + 3 <= p->size && strncmp(p->buffer + p->pos, "yes", 3) == 0) ||
-        (p->pos + 3 <= p->size && strncmp(p->buffer + p->pos, "Yes", 3) == 0) ||
-        (p->pos + 3 <= p->size && strncmp(p->buffer + p->pos, "YES", 3) == 0)) {
+    if ((peek_pos + 3 <= p->size && strncmp(p->buffer + peek_pos, "yes", 3) == 0) ||
+        (peek_pos + 3 <= p->size && strncmp(p->buffer + peek_pos, "Yes", 3) == 0) ||
+        (peek_pos + 3 <= p->size && strncmp(p->buffer + peek_pos, "YES", 3) == 0)) {
       return OLIB_OBJECT_TYPE_BOOL;
     }
   }
   if (ch == 'n' || ch == 'N') {
-    if ((p->pos + 2 <= p->size && strncmp(p->buffer + p->pos, "no", 2) == 0) ||
-        (p->pos + 2 <= p->size && strncmp(p->buffer + p->pos, "No", 2) == 0) ||
-        (p->pos + 2 <= p->size && strncmp(p->buffer + p->pos, "NO", 2) == 0)) {
+    if ((peek_pos + 2 <= p->size && strncmp(p->buffer + peek_pos, "no", 2) == 0) ||
+        (peek_pos + 2 <= p->size && strncmp(p->buffer + peek_pos, "No", 2) == 0) ||
+        (peek_pos + 2 <= p->size && strncmp(p->buffer + peek_pos, "NO", 2) == 0)) {
       return OLIB_OBJECT_TYPE_BOOL;
     }
   }
   if (ch == 'o' || ch == 'O') {
-    if ((p->pos + 2 <= p->size && strncmp(p->buffer + p->pos, "on", 2) == 0) ||
-        (p->pos + 2 <= p->size && strncmp(p->buffer + p->pos, "On", 2) == 0) ||
-        (p->pos + 2 <= p->size && strncmp(p->buffer + p->pos, "ON", 2) == 0)) {
+    if ((peek_pos + 2 <= p->size && strncmp(p->buffer + peek_pos, "on", 2) == 0) ||
+        (peek_pos + 2 <= p->size && strncmp(p->buffer + peek_pos, "On", 2) == 0) ||
+        (peek_pos + 2 <= p->size && strncmp(p->buffer + peek_pos, "ON", 2) == 0)) {
       return OLIB_OBJECT_TYPE_BOOL;
     }
-    if ((p->pos + 3 <= p->size && strncmp(p->buffer + p->pos, "off", 3) == 0) ||
-        (p->pos + 3 <= p->size && strncmp(p->buffer + p->pos, "Off", 3) == 0) ||
-        (p->pos + 3 <= p->size && strncmp(p->buffer + p->pos, "OFF", 3) == 0)) {
+    if ((peek_pos + 3 <= p->size && strncmp(p->buffer + peek_pos, "off", 3) == 0) ||
+        (peek_pos + 3 <= p->size && strncmp(p->buffer + peek_pos, "Off", 3) == 0) ||
+        (peek_pos + 3 <= p->size && strncmp(p->buffer + peek_pos, "OFF", 3) == 0)) {
       return OLIB_OBJECT_TYPE_BOOL;
     }
   }
 
   // Check if this is a key (has a colon) -> struct
-  size_t pos = p->pos;
+  size_t pos = peek_pos;
   while (pos < p->size && p->buffer[pos] != '\n' && p->buffer[pos] != '#') {
     if (p->buffer[pos] == ':') {
-      // Make sure it's followed by space or newline
-      if (pos + 1 < p->size && (p->buffer[pos + 1] == ' ' || p->buffer[pos + 1] == '\n')) {
+      // Make sure it's followed by space, newline, or carriage return
+      if (pos + 1 >= p->size || p->buffer[pos + 1] == ' ' || 
+          p->buffer[pos + 1] == '\n' || p->buffer[pos + 1] == '\r') {
         return OLIB_OBJECT_TYPE_STRUCT;
       }
     }
@@ -628,6 +661,7 @@ static olib_object_type_t yaml_read_peek(void* ctx) {
 
 static bool yaml_read_int(void* ctx, int64_t* value) {
   yaml_ctx_t* c = (yaml_ctx_t*)ctx;
+  yaml_skip_block_list_prefix(c);
   text_parse_number_result_t result;
   if (!text_parse_number(&c->parse, &result)) return false;
   *value = result.int_value;
@@ -636,14 +670,16 @@ static bool yaml_read_int(void* ctx, int64_t* value) {
 
 static bool yaml_read_uint(void* ctx, uint64_t* value) {
   yaml_ctx_t* c = (yaml_ctx_t*)ctx;
+  yaml_skip_block_list_prefix(c);
   text_parse_number_result_t result;
   if (!text_parse_number(&c->parse, &result)) return false;
-  *value = (uint64_t)result.int_value;
+  *value = result.uint_value;
   return true;
 }
 
 static bool yaml_read_float(void* ctx, double* value) {
   yaml_ctx_t* c = (yaml_ctx_t*)ctx;
+  yaml_skip_block_list_prefix(c);
   text_parse_number_result_t result;
   if (!text_parse_number(&c->parse, &result)) return false;
   *value = result.is_float ? result.float_value : (double)result.int_value;
@@ -652,6 +688,7 @@ static bool yaml_read_float(void* ctx, double* value) {
 
 static bool yaml_read_string(void* ctx, const char** value) {
   yaml_ctx_t* c = (yaml_ctx_t*)ctx;
+  yaml_skip_block_list_prefix(c);
   text_parse_ctx_t* p = &c->parse;
   text_parse_skip_whitespace(p);
 
@@ -680,6 +717,7 @@ static bool yaml_read_string(void* ctx, const char** value) {
 
 static bool yaml_read_bool(void* ctx, bool* value) {
   yaml_ctx_t* c = (yaml_ctx_t*)ctx;
+  yaml_skip_block_list_prefix(c);
   text_parse_ctx_t* p = &c->parse;
   text_parse_skip_whitespace(p);
 
@@ -708,6 +746,7 @@ static bool yaml_read_bool(void* ctx, bool* value) {
 
 static bool yaml_read_list_begin(void* ctx, size_t* size) {
   yaml_ctx_t* c = (yaml_ctx_t*)ctx;
+  yaml_skip_block_list_prefix(c);
   text_parse_ctx_t* p = &c->parse;
   text_parse_skip_whitespace_and_comments(p);
 
@@ -751,11 +790,15 @@ static bool yaml_read_list_begin(void* ctx, size_t* size) {
     // Count items at this indentation level
     int base_indent = yaml_get_line_indent(p);
     size_t count = 0;
+    
+    // Find the start of the current line to begin scanning
     size_t pos = p->pos;
+    while (pos > 0 && p->buffer[pos - 1] != '\n') {
+      pos--;
+    }
 
     while (pos < p->size) {
-      // Skip whitespace at start of line
-      size_t line_start = pos;
+      // Count spaces at start of line
       int spaces = 0;
       while (pos < p->size && p->buffer[pos] == ' ') {
         spaces++;
@@ -763,8 +806,14 @@ static bool yaml_read_list_begin(void* ctx, size_t* size) {
       }
       int current_indent = spaces / 2;
 
-      if (current_indent < base_indent) {
-        break;  // Dedent
+      // Check for end of block (dedent or end of file)
+      if (pos >= p->size) {
+        break;
+      }
+      
+      // If we see a non-whitespace, non-dash character at lower indent, stop
+      if (current_indent < base_indent && p->buffer[pos] != '\n') {
+        break;
       }
 
       if (current_indent == base_indent && pos < p->size && p->buffer[pos] == '-') {
@@ -779,6 +828,10 @@ static bool yaml_read_list_begin(void* ctx, size_t* size) {
       }
       if (pos < p->size) pos++;  // Skip newline
     }
+
+    // Set block list reading state
+    c->reading_block_list = true;
+    c->block_list_indent = base_indent;
 
     *size = count;
     return true;
@@ -798,13 +851,14 @@ static bool yaml_read_list_end(void* ctx) {
     return text_parse_match(p, ']');
   }
 
-  // For block lists, we don't consume anything - we just return true
-  // The caller handles the indentation-based end detection
+  // For block lists, clear the reading state
+  c->reading_block_list = false;
   return true;
 }
 
 static bool yaml_read_struct_begin(void* ctx) {
   yaml_ctx_t* c = (yaml_ctx_t*)ctx;
+  yaml_skip_block_list_prefix(c);
   text_parse_ctx_t* p = &c->parse;
   text_parse_skip_whitespace_and_comments(p);
 
@@ -828,11 +882,11 @@ static bool yaml_read_struct_key(void* ctx, const char** key) {
     return false;
   }
 
-  // Skip "- " if this is an list item containing a mapping
+  // Check for block list item marker - this means we've reached the next list item
+  // or a nested list, so we should stop reading this struct's keys
   if (ch == '-' && p->pos + 1 < p->size &&
       (p->buffer[p->pos + 1] == ' ' || p->buffer[p->pos + 1] == '\n')) {
-    p->pos += 2;
-    text_parse_skip_whitespace(p);
+    return false;
   }
 
   // Read the key
@@ -922,6 +976,8 @@ static bool yaml_init_read(void* ctx, const uint8_t* data, size_t size) {
   yaml_ctx_t* c = (yaml_ctx_t*)ctx;
   text_parse_init(&c->parse, (const char*)data, size);
   c->read_indent_level = 0;
+  c->reading_block_list = false;
+  c->block_list_indent = 0;
   return true;
 }
 

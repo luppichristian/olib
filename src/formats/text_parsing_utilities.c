@@ -260,8 +260,15 @@ bool text_parse_number(text_parse_ctx_t* ctx, text_parse_number_result_t* result
   if (result->is_float) {
     result->float_value = strtod(ctx->temp_string, NULL);
     result->int_value = (int64_t)result->float_value;
+    result->uint_value = (uint64_t)result->float_value;
   } else {
-    result->int_value = strtoll(ctx->temp_string, NULL, 10);
+    if (result->is_negative) {
+      result->int_value = strtoll(ctx->temp_string, NULL, 10);
+      result->uint_value = (uint64_t)result->int_value;
+    } else {
+      result->uint_value = strtoull(ctx->temp_string, NULL, 10);
+      result->int_value = (int64_t)result->uint_value;
+    }
     result->float_value = (double)result->int_value;
   }
   return true;

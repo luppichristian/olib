@@ -526,8 +526,15 @@ static bool json_parse_number(text_parse_ctx_t* p, text_parse_number_result_t* r
   if (is_float) {
     result->float_value = strtod(buf, NULL);
     result->int_value = (int64_t)result->float_value;
+    result->uint_value = (uint64_t)result->float_value;
   } else {
-    result->int_value = strtoll(buf, NULL, 10);
+    if (is_negative) {
+      result->int_value = strtoll(buf, NULL, 10);
+      result->uint_value = (uint64_t)result->int_value;
+    } else {
+      result->uint_value = strtoull(buf, NULL, 10);
+      result->int_value = (int64_t)result->uint_value;
+    }
     result->float_value = (double)result->int_value;
   }
 
@@ -627,7 +634,7 @@ static bool json_read_uint(void* ctx, uint64_t* value) {
 
   text_parse_number_result_t result;
   if (!json_parse_number(p, &result)) return false;
-  *value = (uint64_t)result.int_value;
+  *value = result.uint_value;
   return true;
 }
 

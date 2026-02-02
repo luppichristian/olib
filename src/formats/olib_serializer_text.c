@@ -392,7 +392,7 @@ static bool text_read_uint(void* ctx, uint64_t* value) {
   text_ctx_t* c = (text_ctx_t*)ctx;
   text_parse_number_result_t result;
   if (!text_parse_number(&c->parse, &result)) return false;
-  *value = (uint64_t)result.int_value;
+  *value = result.uint_value;
   return true;
 }
 
@@ -435,28 +435,38 @@ static bool text_read_list_begin(void* ctx, size_t* size) {
   if (!text_parse_match(p, '[')) return false;
 
   // Count elements by scanning ahead (without consuming)
+  // Elements can be separated by commas, newlines, or both
   size_t pos = p->pos;
   size_t count = 0;
   int depth = 1;
   bool has_content = false;
+  bool just_had_separator = true;  // Start true to count first element
 
   while (pos < p->size && depth > 0) {
     char ch = p->buffer[pos];
     if (ch == '[' || ch == '{') {
       depth++;
+      if (depth == 2 && just_had_separator) {
+        count++;
+        just_had_separator = false;
+      }
       has_content = true;
     } else if (ch == ']' || ch == '}') {
       depth--;
-    } else if (depth == 1 && ch == ',') {
-      count++;
-    } else if (ch != ' ' && ch != '\t' && ch != '\n' && ch != '\r' && depth == 1) {
+    } else if (depth == 1 && (ch == ',' || ch == '\n')) {
+      // Comma or newline can be a separator
+      if (!just_had_separator && has_content) {
+        // This marks the end of a previous element
+      }
+      just_had_separator = true;
+    } else if (ch != ' ' && ch != '\t' && ch != '\r' && depth == 1) {
+      if (just_had_separator) {
+        count++;
+        just_had_separator = false;
+      }
       has_content = true;
     }
     pos++;
-  }
-
-  if (has_content) {
-    count++;
   }
 
   *size = count;

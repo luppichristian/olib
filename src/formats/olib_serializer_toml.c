@@ -541,7 +541,7 @@ static bool toml_read_uint(void* ctx, uint64_t* value) {
   toml_ctx_t* c = (toml_ctx_t*)ctx;
   text_parse_number_result_t result;
   if (!text_parse_number(&c->parse, &result)) return false;
-  *value = (uint64_t)result.int_value;
+  *value = result.uint_value;
   return true;
 }
 
