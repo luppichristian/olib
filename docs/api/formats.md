@@ -1,3 +1,7 @@
+---
+title: Formats Module
+---
+
 # Formats Module
 
 The formats module (`olib/olib_formats.h`) defines the built-in serialization formats and their serializer constructors.

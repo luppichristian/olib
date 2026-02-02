@@ -1,3 +1,7 @@
+---
+title: Home
+---
+
 # olib Documentation
 
 Welcome to the olib documentation. olib is a lightweight C library for object serialization and format conversion.

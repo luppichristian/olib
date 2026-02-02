@@ -1,3 +1,7 @@
+---
+title: Helpers Module
+---
+
 # Helpers Module
 
 The helpers module (`olib/olib_helpers.h`) provides high-level convenience functions for common serialization operations.

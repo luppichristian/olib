@@ -1,3 +1,7 @@
+---
+title: Base Module
+---
+
 # Base Module
 
 The base module (`olib/olib_base.h`) provides memory allocation functions and C/C++ compatibility macros.
