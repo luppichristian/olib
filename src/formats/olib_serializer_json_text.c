@@ -44,7 +44,7 @@ typedef struct {
   int indent_level;
 
   // State stack for nested containers
-  int container_stack[64];  // 0 = none, 1 = array, 2 = struct
+  int container_stack[64];  // 0 = none, 1 = list, 2 = struct
   bool first_item_stack[64];
   int stack_depth;
 
@@ -148,7 +148,7 @@ static bool json_write_value_prefix(json_ctx_t* ctx) {
   int container = json_get_container_type(ctx);
 
   if (container == 1) {
-    // Inside array
+    // Inside list
     if (!json_write_comma_if_needed(ctx)) return false;
     if (!json_write_newline_indent(ctx)) return false;
   } else if (container == 2) {
@@ -275,7 +275,7 @@ static bool json_write_bool(void* ctx, bool value) {
   return json_write_str(c, value ? "true" : "false");
 }
 
-static bool json_write_array_begin(void* ctx, size_t size) {
+static bool json_write_list_begin(void* ctx, size_t size) {
   (void)size;
   json_ctx_t* c = (json_ctx_t*)ctx;
 
@@ -283,9 +283,9 @@ static bool json_write_array_begin(void* ctx, size_t size) {
 
   if (!json_write_char(c, '[')) return false;
 
-  // Push array onto stack
+  // Push list onto stack
   if (c->stack_depth < 64) {
-    c->container_stack[c->stack_depth] = 1;  // array
+    c->container_stack[c->stack_depth] = 1;  // list
     c->first_item_stack[c->stack_depth] = true;
     c->stack_depth++;
   }
@@ -294,12 +294,12 @@ static bool json_write_array_begin(void* ctx, size_t size) {
   return true;
 }
 
-static bool json_write_array_end(void* ctx) {
+static bool json_write_list_end(void* ctx) {
   json_ctx_t* c = (json_ctx_t*)ctx;
 
   c->indent_level--;
 
-  // Check if array was empty
+  // Check if list was empty
   bool was_empty = json_is_first_item(c);
 
   // Pop from stack
@@ -602,7 +602,7 @@ static olib_object_type_t json_read_peek(void* ctx) {
   text_parse_ctx_t* p = &c->parse;
   json_skip_whitespace(p);
 
-  // Skip comma if present (between array/object elements)
+  // Skip comma if present (between list/object elements)
   if (p->pos < p->size && p->buffer[p->pos] == ',') {
     p->pos++;
     json_skip_whitespace(p);
@@ -637,7 +637,7 @@ static olib_object_type_t json_read_peek(void* ctx) {
     return OLIB_OBJECT_TYPE_STRUCT;
   }
   if (ch == '[') {
-    return OLIB_OBJECT_TYPE_ARRAY;
+    return OLIB_OBJECT_TYPE_LIST;
   }
   if (ch == '-' || isdigit((unsigned char)ch)) {
     // Look ahead to determine if int or float
@@ -749,7 +749,7 @@ static bool json_read_bool(void* ctx, bool* value) {
   return false;
 }
 
-static bool json_read_array_begin(void* ctx, size_t* size) {
+static bool json_read_list_begin(void* ctx, size_t* size) {
   json_ctx_t* c = (json_ctx_t*)ctx;
   text_parse_ctx_t* p = &c->parse;
   json_skip_whitespace(p);
@@ -803,7 +803,7 @@ static bool json_read_array_begin(void* ctx, size_t* size) {
   return true;
 }
 
-static bool json_read_array_end(void* ctx) {
+static bool json_read_list_end(void* ctx) {
   json_ctx_t* c = (json_ctx_t*)ctx;
   text_parse_ctx_t* p = &c->parse;
   json_skip_whitespace(p);
@@ -929,7 +929,7 @@ static bool json_read_matrix(void* ctx, size_t* ndims, size_t** dims, double** d
         goto error;
       }
     } else if (strcmp(key, "dims") == 0) {
-      // Read dims array
+      // Read dims list
       if (p->pos >= p->size || p->buffer[p->pos] != '[') goto error;
       p->pos++;
 
@@ -961,7 +961,7 @@ static bool json_read_matrix(void* ctx, size_t* ndims, size_t** dims, double** d
       }
       got_dims = true;
     } else if (strcmp(key, "data") == 0) {
-      // Read data array
+      // Read data list
       if (p->pos >= p->size || p->buffer[p->pos] != '[') goto error;
       p->pos++;
 
@@ -1127,8 +1127,8 @@ OLIB_API olib_serializer_t* olib_serializer_new_json_text() {
     .write_float = json_write_float,
     .write_string = json_write_string,
     .write_bool = json_write_bool,
-    .write_array_begin = json_write_array_begin,
-    .write_array_end = json_write_array_end,
+    .write_list_begin = json_write_list_begin,
+    .write_list_end = json_write_list_end,
     .write_struct_begin = json_write_struct_begin,
     .write_struct_key = json_write_struct_key,
     .write_struct_end = json_write_struct_end,
@@ -1140,8 +1140,8 @@ OLIB_API olib_serializer_t* olib_serializer_new_json_text() {
     .read_float = json_read_float,
     .read_string = json_read_string,
     .read_bool = json_read_bool,
-    .read_array_begin = json_read_array_begin,
-    .read_array_end = json_read_array_end,
+    .read_list_begin = json_read_list_begin,
+    .read_list_end = json_read_list_end,
     .read_struct_begin = json_read_struct_begin,
     .read_struct_key = json_read_struct_key,
     .read_struct_end = json_read_struct_end,

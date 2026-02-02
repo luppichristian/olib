@@ -13,7 +13,7 @@ TEST(EdgeCases, NullInputsToFunctions)
     // These should handle null gracefully (not crash)
     EXPECT_EQ(olib_object_get_type(nullptr), OLIB_OBJECT_TYPE_MAX);  // Invalid type for null input
     EXPECT_FALSE(olib_object_is_type(nullptr, OLIB_OBJECT_TYPE_INT));
-    EXPECT_EQ(olib_object_array_size(nullptr), 0u);
+    EXPECT_EQ(olib_object_list_size(nullptr), 0u);
     EXPECT_EQ(olib_object_struct_size(nullptr), 0u);
     EXPECT_FALSE(olib_object_struct_has(nullptr, "key"));
     EXPECT_EQ(olib_object_struct_get(nullptr, "key"), nullptr);
@@ -23,21 +23,21 @@ TEST(EdgeCases, NullInputsToFunctions)
 // Large Data Tests
 // =============================================================================
 
-TEST(EdgeCases, LargeArray)
+TEST(EdgeCases, LargeList)
 {
-    olib_object_t* arr = olib_object_new(OLIB_OBJECT_TYPE_ARRAY);
+    olib_object_t* arr = olib_object_new(OLIB_OBJECT_TYPE_LIST);
 
     const int COUNT = 1000;
     for (int i = 0; i < COUNT; i++) {
         olib_object_t* val = olib_object_new(OLIB_OBJECT_TYPE_INT);
         olib_object_set_int(val, i);
-        EXPECT_TRUE(olib_object_array_push(arr, val));
+        EXPECT_TRUE(olib_object_list_push(arr, val));
     }
 
-    EXPECT_EQ(olib_object_array_size(arr), (size_t)COUNT);
+    EXPECT_EQ(olib_object_list_size(arr), (size_t)COUNT);
 
     for (int i = 0; i < COUNT; i++) {
-        EXPECT_EQ(olib_object_get_int(olib_object_array_get(arr, i)), i);
+        EXPECT_EQ(olib_object_get_int(olib_object_list_get(arr, i)), i);
     }
 
     olib_object_free(arr);
@@ -99,29 +99,29 @@ TEST(EdgeCases, DeeplyNestedStructure)
     olib_object_free(root);
 }
 
-TEST(EdgeCases, DeeplyNestedArray)
+TEST(EdgeCases, DeeplyNestedList)
 {
-    olib_object_t* root = olib_object_new(OLIB_OBJECT_TYPE_ARRAY);
+    olib_object_t* root = olib_object_new(OLIB_OBJECT_TYPE_LIST);
     olib_object_t* current = root;
 
     const int DEPTH = 50;
     for (int i = 0; i < DEPTH; i++) {
-        olib_object_t* child = olib_object_new(OLIB_OBJECT_TYPE_ARRAY);
-        olib_object_array_push(current, child);
+        olib_object_t* child = olib_object_new(OLIB_OBJECT_TYPE_LIST);
+        olib_object_list_push(current, child);
         current = child;
     }
 
     olib_object_t* leaf = olib_object_new(OLIB_OBJECT_TYPE_INT);
     olib_object_set_int(leaf, 999);
-    olib_object_array_push(current, leaf);
+    olib_object_list_push(current, leaf);
 
     // Traverse back to verify
     current = root;
     for (int i = 0; i < DEPTH; i++) {
-        current = olib_object_array_get(current, 0);
+        current = olib_object_list_get(current, 0);
         ASSERT_NE(current, nullptr);
     }
-    EXPECT_EQ(olib_object_get_int(olib_object_array_get(current, 0)), 999);
+    EXPECT_EQ(olib_object_get_int(olib_object_list_get(current, 0)), 999);
 
     olib_object_free(root);
 }
@@ -177,7 +177,7 @@ TEST(EdgeCases, StringWithUnicode)
 {
     olib_object_t* obj = olib_object_new(OLIB_OBJECT_TYPE_STRING);
 
-    // UTF-8 encoded strings (世界 = \xE4\xB8\x96\xE7\x95\x8C, 🌍 = \xF0\x9F\x8C\x8D)
+    // UTF-8 encoded strings (ä¸–ç•Œ = \xE4\xB8\x96\xE7\x95\x8C, ðŸŒ = \xF0\x9F\x8C\x8D)
     const char* unicode_str = "Hello \xE4\xB8\x96\xE7\x95\x8C \xF0\x9F\x8C\x8D";
     EXPECT_TRUE(olib_object_set_string(obj, unicode_str));
     EXPECT_STREQ(olib_object_get_string(obj), unicode_str);
@@ -250,14 +250,14 @@ TEST(EdgeCases, FloatSpecialValues)
 // Empty Container Tests
 // =============================================================================
 
-TEST(EdgeCases, EmptyArrayOperations)
+TEST(EdgeCases, EmptyListOperations)
 {
-    olib_object_t* arr = olib_object_new(OLIB_OBJECT_TYPE_ARRAY);
+    olib_object_t* arr = olib_object_new(OLIB_OBJECT_TYPE_LIST);
 
-    EXPECT_EQ(olib_object_array_size(arr), 0u);
-    EXPECT_EQ(olib_object_array_get(arr, 0), nullptr);
-    EXPECT_FALSE(olib_object_array_pop(arr));
-    EXPECT_FALSE(olib_object_array_remove(arr, 0));
+    EXPECT_EQ(olib_object_list_size(arr), 0u);
+    EXPECT_EQ(olib_object_list_get(arr, 0), nullptr);
+    EXPECT_FALSE(olib_object_list_pop(arr));
+    EXPECT_FALSE(olib_object_list_remove(arr, 0));
 
     olib_object_free(arr);
 }
@@ -319,19 +319,19 @@ TEST(EdgeCases, SerializeEmptyContainers)
 {
     olib_serializer_t* ser = olib_serializer_new_json_text();
 
-    // Empty array
-    olib_object_t* empty_arr = olib_object_new(OLIB_OBJECT_TYPE_ARRAY);
+    // Empty list
+    olib_object_t* empty_lst = olib_object_new(OLIB_OBJECT_TYPE_LIST);
     char* json = nullptr;
-    EXPECT_TRUE(olib_serializer_write_string(ser, empty_arr, &json));
+    EXPECT_TRUE(olib_serializer_write_string(ser, empty_lst, &json));
     ASSERT_NE(json, nullptr);
 
-    olib_object_t* parsed_arr = olib_serializer_read_string(ser, json);
-    ASSERT_NE(parsed_arr, nullptr);
-    EXPECT_EQ(olib_object_array_size(parsed_arr), 0u);
+    olib_object_t* parsed_lst = olib_serializer_read_string(ser, json);
+    ASSERT_NE(parsed_lst, nullptr);
+    EXPECT_EQ(olib_object_list_size(parsed_lst), 0u);
 
     olib_free(json);
-    olib_object_free(empty_arr);
-    olib_object_free(parsed_arr);
+    olib_object_free(empty_lst);
+    olib_object_free(parsed_lst);
 
     // Empty struct
     olib_object_t* empty_struct = olib_object_new(OLIB_OBJECT_TYPE_STRUCT);

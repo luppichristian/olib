@@ -39,10 +39,10 @@ typedef struct {
   size_t write_capacity;
   size_t write_size;
   int indent_level;
-  bool in_flow_array;
-  bool flow_array_first_item;
-  bool in_block_array;
-  bool block_array_needs_newline;
+  bool in_flow_list;
+  bool flow_list_first_item;
+  bool in_block_list;
+  bool block_list_needs_newline;
   bool in_struct;
   bool struct_first_item;
   bool struct_inline_value;
@@ -172,12 +172,12 @@ static bool yaml_write_key_prefix(yaml_ctx_t* ctx) {
 static bool yaml_write_int(void* ctx, int64_t value) {
   yaml_ctx_t* c = (yaml_ctx_t*)ctx;
 
-  if (c->in_flow_array) {
-    if (!c->flow_array_first_item) {
+  if (c->in_flow_list) {
+    if (!c->flow_list_first_item) {
       if (!yaml_write_str(c, ", ")) return false;
     }
-    c->flow_array_first_item = false;
-  } else if (c->in_block_array) {
+    c->flow_list_first_item = false;
+  } else if (c->in_block_list) {
     if (!yaml_write_newline_indent(c)) return false;
     if (!yaml_write_str(c, "- ")) return false;
   } else if (c->in_struct && !c->struct_inline_value) {
@@ -199,12 +199,12 @@ static bool yaml_write_int(void* ctx, int64_t value) {
 static bool yaml_write_uint(void* ctx, uint64_t value) {
   yaml_ctx_t* c = (yaml_ctx_t*)ctx;
 
-  if (c->in_flow_array) {
-    if (!c->flow_array_first_item) {
+  if (c->in_flow_list) {
+    if (!c->flow_list_first_item) {
       if (!yaml_write_str(c, ", ")) return false;
     }
-    c->flow_array_first_item = false;
-  } else if (c->in_block_array) {
+    c->flow_list_first_item = false;
+  } else if (c->in_block_list) {
     if (!yaml_write_newline_indent(c)) return false;
     if (!yaml_write_str(c, "- ")) return false;
   } else if (c->in_struct && !c->struct_inline_value) {
@@ -226,12 +226,12 @@ static bool yaml_write_uint(void* ctx, uint64_t value) {
 static bool yaml_write_float(void* ctx, double value) {
   yaml_ctx_t* c = (yaml_ctx_t*)ctx;
 
-  if (c->in_flow_array) {
-    if (!c->flow_array_first_item) {
+  if (c->in_flow_list) {
+    if (!c->flow_list_first_item) {
       if (!yaml_write_str(c, ", ")) return false;
     }
-    c->flow_array_first_item = false;
-  } else if (c->in_block_array) {
+    c->flow_list_first_item = false;
+  } else if (c->in_block_list) {
     if (!yaml_write_newline_indent(c)) return false;
     if (!yaml_write_str(c, "- ")) return false;
   } else if (c->in_struct && !c->struct_inline_value) {
@@ -253,12 +253,12 @@ static bool yaml_write_float(void* ctx, double value) {
 static bool yaml_write_string(void* ctx, const char* value) {
   yaml_ctx_t* c = (yaml_ctx_t*)ctx;
 
-  if (c->in_flow_array) {
-    if (!c->flow_array_first_item) {
+  if (c->in_flow_list) {
+    if (!c->flow_list_first_item) {
       if (!yaml_write_str(c, ", ")) return false;
     }
-    c->flow_array_first_item = false;
-  } else if (c->in_block_array) {
+    c->flow_list_first_item = false;
+  } else if (c->in_block_list) {
     if (!yaml_write_newline_indent(c)) return false;
     if (!yaml_write_str(c, "- ")) return false;
   } else if (c->in_struct && !c->struct_inline_value) {
@@ -311,12 +311,12 @@ static bool yaml_write_string(void* ctx, const char* value) {
 static bool yaml_write_bool(void* ctx, bool value) {
   yaml_ctx_t* c = (yaml_ctx_t*)ctx;
 
-  if (c->in_flow_array) {
-    if (!c->flow_array_first_item) {
+  if (c->in_flow_list) {
+    if (!c->flow_list_first_item) {
       if (!yaml_write_str(c, ", ")) return false;
     }
-    c->flow_array_first_item = false;
-  } else if (c->in_block_array) {
+    c->flow_list_first_item = false;
+  } else if (c->in_block_list) {
     if (!yaml_write_newline_indent(c)) return false;
     if (!yaml_write_str(c, "- ")) return false;
   } else if (c->in_struct && !c->struct_inline_value) {
@@ -333,24 +333,24 @@ static bool yaml_write_bool(void* ctx, bool value) {
   return yaml_write_str(c, value ? "true" : "false");
 }
 
-static bool yaml_write_array_begin(void* ctx, size_t size) {
+static bool yaml_write_list_begin(void* ctx, size_t size) {
   yaml_ctx_t* c = (yaml_ctx_t*)ctx;
 
   // Determine if we should use flow style (inline) or block style
-  // Use flow style for small simple arrays (size <= 8 and not nested)
-  bool use_flow = (size <= 8) && !c->in_block_array;
+  // Use flow style for small simple lists (size <= 8 and not nested)
+  bool use_flow = (size <= 8) && !c->in_block_list;
 
-  if (c->in_flow_array) {
-    if (!c->flow_array_first_item) {
+  if (c->in_flow_list) {
+    if (!c->flow_list_first_item) {
       if (!yaml_write_str(c, ", ")) return false;
     }
-    c->flow_array_first_item = false;
-    // Nested arrays in flow context stay in flow
+    c->flow_list_first_item = false;
+    // Nested lists in flow context stay in flow
     use_flow = true;
-  } else if (c->in_block_array) {
+  } else if (c->in_block_list) {
     if (!yaml_write_newline_indent(c)) return false;
     if (!yaml_write_str(c, "- ")) return false;
-    // Nested arrays in block context use block style
+    // Nested lists in block context use block style
     use_flow = false;
   } else if (c->in_struct && !c->struct_inline_value) {
     if (!c->struct_first_item) {
@@ -365,26 +365,26 @@ static bool yaml_write_array_begin(void* ctx, size_t size) {
 
   if (use_flow) {
     if (!yaml_write_char(c, '[')) return false;
-    c->in_flow_array = true;
-    c->flow_array_first_item = true;
+    c->in_flow_list = true;
+    c->flow_list_first_item = true;
   } else {
-    // Block style array - items will be on separate lines with "-"
-    c->in_block_array = true;
+    // Block style list - items will be on separate lines with "-"
+    c->in_block_list = true;
     c->indent_level++;
   }
 
   return true;
 }
 
-static bool yaml_write_array_end(void* ctx) {
+static bool yaml_write_list_end(void* ctx) {
   yaml_ctx_t* c = (yaml_ctx_t*)ctx;
 
-  if (c->in_flow_array) {
+  if (c->in_flow_list) {
     if (!yaml_write_char(c, ']')) return false;
-    c->in_flow_array = false;
-  } else if (c->in_block_array) {
+    c->in_flow_list = false;
+  } else if (c->in_block_list) {
     c->indent_level--;
-    c->in_block_array = false;
+    c->in_block_list = false;
   }
 
   return true;
@@ -393,12 +393,12 @@ static bool yaml_write_array_end(void* ctx) {
 static bool yaml_write_struct_begin(void* ctx) {
   yaml_ctx_t* c = (yaml_ctx_t*)ctx;
 
-  if (c->in_flow_array) {
-    if (!c->flow_array_first_item) {
+  if (c->in_flow_list) {
+    if (!c->flow_list_first_item) {
       if (!yaml_write_str(c, ", ")) return false;
     }
-    c->flow_array_first_item = false;
-    // Struct in flow array - use inline notation
+    c->flow_list_first_item = false;
+    // Struct in flow list - use inline notation
     if (!yaml_write_char(c, '{')) return false;
     c->in_struct = true;
     c->struct_first_item = true;
@@ -406,7 +406,7 @@ static bool yaml_write_struct_begin(void* ctx) {
     return true;
   }
 
-  if (c->in_block_array) {
+  if (c->in_block_list) {
     if (!yaml_write_newline_indent(c)) return false;
     if (!yaml_write_str(c, "- ")) return false;
   } else if (c->in_struct && !c->struct_inline_value) {
@@ -437,8 +437,8 @@ static bool yaml_write_struct_key(void* ctx, const char* key) {
 static bool yaml_write_struct_end(void* ctx) {
   yaml_ctx_t* c = (yaml_ctx_t*)ctx;
 
-  if (c->in_flow_array) {
-    // We're in an inline struct within a flow array
+  if (c->in_flow_list) {
+    // We're in an inline struct within a flow list
     if (!yaml_write_char(c, '}')) return false;
   } else {
     c->indent_level--;
@@ -451,12 +451,12 @@ static bool yaml_write_struct_end(void* ctx) {
 static bool yaml_write_matrix(void* ctx, size_t ndims, const size_t* dims, const double* data) {
   yaml_ctx_t* c = (yaml_ctx_t*)ctx;
 
-  if (c->in_flow_array) {
-    if (!c->flow_array_first_item) {
+  if (c->in_flow_list) {
+    if (!c->flow_list_first_item) {
       if (!yaml_write_str(c, ", ")) return false;
     }
-    c->flow_array_first_item = false;
-  } else if (c->in_block_array) {
+    c->flow_list_first_item = false;
+  } else if (c->in_block_list) {
     if (!yaml_write_newline_indent(c)) return false;
     if (!yaml_write_str(c, "- ")) return false;
   } else if (c->in_struct && !c->struct_inline_value) {
@@ -580,7 +580,7 @@ static olib_object_type_t yaml_read_peek(void* ctx) {
   text_parse_ctx_t* p = &c->parse;
   text_parse_skip_whitespace_and_comments(p);
 
-  // Skip comma if present (between flow array/object elements)
+  // Skip comma if present (between flow list/object elements)
   if (p->pos < p->size && p->buffer[p->pos] == ',') {
     p->pos++;
     text_parse_skip_whitespace_and_comments(p);
@@ -592,17 +592,17 @@ static olib_object_type_t yaml_read_peek(void* ctx) {
 
   char ch = text_parse_peek_raw(p);
 
-  // Check for block array item
+  // Check for block list item
   if (ch == '-') {
-    // Check if it's "- " (array item) or a negative number
+    // Check if it's "- " (list item) or a negative number
     if (p->pos + 1 < p->size && (p->buffer[p->pos + 1] == ' ' || p->buffer[p->pos + 1] == '\n')) {
-      return OLIB_OBJECT_TYPE_ARRAY;
+      return OLIB_OBJECT_TYPE_LIST;
     }
   }
 
-  // Flow array
+  // Flow list
   if (ch == '[') {
-    return OLIB_OBJECT_TYPE_ARRAY;
+    return OLIB_OBJECT_TYPE_LIST;
   }
 
   // Flow/block mapping
@@ -774,14 +774,14 @@ static bool yaml_read_bool(void* ctx, bool* value) {
   return false;
 }
 
-static bool yaml_read_array_begin(void* ctx, size_t* size) {
+static bool yaml_read_list_begin(void* ctx, size_t* size) {
   yaml_ctx_t* c = (yaml_ctx_t*)ctx;
   text_parse_ctx_t* p = &c->parse;
   text_parse_skip_whitespace_and_comments(p);
 
   char ch = text_parse_peek_raw(p);
 
-  // Flow array [...]
+  // Flow list [...]
   if (ch == '[') {
     if (!text_parse_match(p, '[')) return false;
 
@@ -814,7 +814,7 @@ static bool yaml_read_array_begin(void* ctx, size_t* size) {
     return true;
   }
 
-  // Block array (starts with "- ")
+  // Block list (starts with "- ")
   if (ch == '-') {
     // Count items at this indentation level
     int base_indent = yaml_get_line_indent(p);
@@ -855,18 +855,18 @@ static bool yaml_read_array_begin(void* ctx, size_t* size) {
   return false;
 }
 
-static bool yaml_read_array_end(void* ctx) {
+static bool yaml_read_list_end(void* ctx) {
   yaml_ctx_t* c = (yaml_ctx_t*)ctx;
   text_parse_ctx_t* p = &c->parse;
   text_parse_skip_whitespace(p);
 
-  // For flow arrays, consume the closing bracket
+  // For flow lists, consume the closing bracket
   if (text_parse_peek_raw(p) == ']') {
     text_parse_match(p, ',');  // Optional trailing comma
     return text_parse_match(p, ']');
   }
 
-  // For block arrays, we don't consume anything - we just return true
+  // For block lists, we don't consume anything - we just return true
   // The caller handles the indentation-based end detection
   return true;
 }
@@ -896,7 +896,7 @@ static bool yaml_read_struct_key(void* ctx, const char** key) {
     return false;
   }
 
-  // Skip "- " if this is an array item containing a mapping
+  // Skip "- " if this is an list item containing a mapping
   if (ch == '-' && p->pos + 1 < p->size &&
       (p->buffer[p->pos + 1] == ' ' || p->buffer[p->pos + 1] == '\n')) {
     p->pos += 2;
@@ -1054,10 +1054,10 @@ static bool yaml_init_write(void* ctx) {
   yaml_ctx_t* c = (yaml_ctx_t*)ctx;
   c->write_size = 0;
   c->indent_level = 0;
-  c->in_flow_array = false;
-  c->flow_array_first_item = true;
-  c->in_block_array = false;
-  c->block_array_needs_newline = false;
+  c->in_flow_list = false;
+  c->flow_list_first_item = true;
+  c->in_block_list = false;
+  c->block_list_needs_newline = false;
   c->in_struct = false;
   c->struct_first_item = true;
   c->struct_inline_value = false;
@@ -1121,8 +1121,8 @@ OLIB_API olib_serializer_t* olib_serializer_new_yaml() {
     .write_float = yaml_write_float,
     .write_string = yaml_write_string,
     .write_bool = yaml_write_bool,
-    .write_array_begin = yaml_write_array_begin,
-    .write_array_end = yaml_write_array_end,
+    .write_list_begin = yaml_write_list_begin,
+    .write_list_end = yaml_write_list_end,
     .write_struct_begin = yaml_write_struct_begin,
     .write_struct_key = yaml_write_struct_key,
     .write_struct_end = yaml_write_struct_end,
@@ -1134,8 +1134,8 @@ OLIB_API olib_serializer_t* olib_serializer_new_yaml() {
     .read_float = yaml_read_float,
     .read_string = yaml_read_string,
     .read_bool = yaml_read_bool,
-    .read_array_begin = yaml_read_array_begin,
-    .read_array_end = yaml_read_array_end,
+    .read_list_begin = yaml_read_list_begin,
+    .read_list_end = yaml_read_list_end,
     .read_struct_begin = yaml_read_struct_begin,
     .read_struct_key = yaml_read_struct_key,
     .read_struct_end = yaml_read_struct_end,

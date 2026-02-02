@@ -107,15 +107,15 @@ static bool olib_serializer_write_object(olib_serializer_t* serializer, olib_obj
             if (!cfg->write_bool) return false;
             return cfg->write_bool(ctx, olib_object_get_bool(obj));
 
-        case OLIB_OBJECT_TYPE_ARRAY: {
-            if (!cfg->write_array_begin || !cfg->write_array_end) return false;
-            size_t size = olib_object_array_size(obj);
-            if (!cfg->write_array_begin(ctx, size)) return false;
+        case OLIB_OBJECT_TYPE_LIST: {
+            if (!cfg->write_list_begin || !cfg->write_list_end) return false;
+            size_t size = olib_object_list_size(obj);
+            if (!cfg->write_list_begin(ctx, size)) return false;
             for (size_t i = 0; i < size; i++) {
-                olib_object_t* item = olib_object_array_get(obj, i);
+                olib_object_t* item = olib_object_list_get(obj, i);
                 if (!olib_serializer_write_object(serializer, item)) return false;
             }
-            return cfg->write_array_end(ctx);
+            return cfg->write_list_end(ctx);
         }
 
         case OLIB_OBJECT_TYPE_STRUCT: {
@@ -214,11 +214,11 @@ static olib_object_t* olib_serializer_read_object(olib_serializer_t* serializer)
             return obj;
         }
 
-        case OLIB_OBJECT_TYPE_ARRAY: {
-            if (!cfg->read_array_begin || !cfg->read_array_end) return NULL;
+        case OLIB_OBJECT_TYPE_LIST: {
+            if (!cfg->read_list_begin || !cfg->read_list_end) return NULL;
             size_t size;
-            if (!cfg->read_array_begin(ctx, &size)) return NULL;
-            obj = olib_object_new(OLIB_OBJECT_TYPE_ARRAY);
+            if (!cfg->read_list_begin(ctx, &size)) return NULL;
+            obj = olib_object_new(OLIB_OBJECT_TYPE_LIST);
             if (!obj) return NULL;
             for (size_t i = 0; i < size; i++) {
                 olib_object_t* item = olib_serializer_read_object(serializer);
@@ -226,13 +226,13 @@ static olib_object_t* olib_serializer_read_object(olib_serializer_t* serializer)
                     olib_object_free(obj);
                     return NULL;
                 }
-                if (!olib_object_array_push(obj, item)) {
+                if (!olib_object_list_push(obj, item)) {
                     olib_object_free(item);
                     olib_object_free(obj);
                     return NULL;
                 }
             }
-            if (!cfg->read_array_end(ctx)) {
+            if (!cfg->read_list_end(ctx)) {
                 olib_object_free(obj);
                 return NULL;
             }

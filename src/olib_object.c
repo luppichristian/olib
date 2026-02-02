@@ -43,12 +43,12 @@ struct olib_object_t {
         double float_val;
         char* string_val;
         bool bool_val;
-        // Array type
+        // List type
         struct {
             olib_object_t** items;
             size_t size;
             size_t capacity;
-        } array;
+        } list;
         // Struct type
         struct {
             olib_struct_entry_t* entries;
@@ -71,7 +71,7 @@ struct olib_object_t {
 
 static const char* g_type_strings[OLIB_OBJECT_TYPE_MAX] = {
     "struct",
-    "array",
+    "list",
     "int",
     "uint",
     "float",
@@ -134,21 +134,21 @@ OLIB_API olib_object_t* olib_object_dupe(olib_object_t* obj) {
                 memcpy(copy->data.string_val, obj->data.string_val, len + 1);
             }
             break;
-        case OLIB_OBJECT_TYPE_ARRAY:
-            if (obj->data.array.size > 0) {
-                copy->data.array.items = olib_malloc(obj->data.array.size * sizeof(olib_object_t*));
-                if (!copy->data.array.items) {
+        case OLIB_OBJECT_TYPE_LIST:
+            if (obj->data.list.size > 0) {
+                copy->data.list.items = olib_malloc(obj->data.list.size * sizeof(olib_object_t*));
+                if (!copy->data.list.items) {
                     olib_object_free(copy);
                     return NULL;
                 }
-                copy->data.array.capacity = obj->data.array.size;
-                for (size_t i = 0; i < obj->data.array.size; i++) {
-                    copy->data.array.items[i] = olib_object_dupe(obj->data.array.items[i]);
-                    if (obj->data.array.items[i] && !copy->data.array.items[i]) {
+                copy->data.list.capacity = obj->data.list.size;
+                for (size_t i = 0; i < obj->data.list.size; i++) {
+                    copy->data.list.items[i] = olib_object_dupe(obj->data.list.items[i]);
+                    if (obj->data.list.items[i] && !copy->data.list.items[i]) {
                         olib_object_free(copy);
                         return NULL;
                     }
-                    copy->data.array.size++;
+                    copy->data.list.size++;
                 }
             }
             break;
@@ -215,12 +215,12 @@ OLIB_API void olib_object_free(olib_object_t* obj) {
                 olib_free(obj->data.string_val);
             }
             break;
-        case OLIB_OBJECT_TYPE_ARRAY:
-            for (size_t i = 0; i < obj->data.array.size; i++) {
-                olib_object_free(obj->data.array.items[i]);
+        case OLIB_OBJECT_TYPE_LIST:
+            for (size_t i = 0; i < obj->data.list.size; i++) {
+                olib_object_free(obj->data.list.items[i]);
             }
-            if (obj->data.array.items) {
-                olib_free(obj->data.array.items);
+            if (obj->data.list.items) {
+                olib_free(obj->data.list.items);
             }
             break;
         case OLIB_OBJECT_TYPE_STRUCT:
@@ -281,107 +281,107 @@ OLIB_API bool olib_object_is_container(olib_object_t* obj) {
         return false;
     }
     return obj->type == OLIB_OBJECT_TYPE_STRUCT ||
-           obj->type == OLIB_OBJECT_TYPE_ARRAY;
+           obj->type == OLIB_OBJECT_TYPE_LIST;
 }
 
 // #############################################################################
-// Array operations
+// List operations
 // #############################################################################
 
-OLIB_API size_t olib_object_array_size(olib_object_t* obj) {
-    if (!obj || obj->type != OLIB_OBJECT_TYPE_ARRAY) {
+OLIB_API size_t olib_object_list_size(olib_object_t* obj) {
+    if (!obj || obj->type != OLIB_OBJECT_TYPE_LIST) {
         return 0;
     }
-    return obj->data.array.size;
+    return obj->data.list.size;
 }
 
-OLIB_API olib_object_t* olib_object_array_get(olib_object_t* obj, size_t index) {
-    if (!obj || obj->type != OLIB_OBJECT_TYPE_ARRAY) {
+OLIB_API olib_object_t* olib_object_list_get(olib_object_t* obj, size_t index) {
+    if (!obj || obj->type != OLIB_OBJECT_TYPE_LIST) {
         return NULL;
     }
-    if (index >= obj->data.array.size) {
+    if (index >= obj->data.list.size) {
         return NULL;
     }
-    return obj->data.array.items[index];
+    return obj->data.list.items[index];
 }
 
-static bool olib_object_array_grow(olib_object_t* obj, size_t min_capacity) {
-    if (obj->data.array.capacity >= min_capacity) {
+static bool olib_object_list_grow(olib_object_t* obj, size_t min_capacity) {
+    if (obj->data.list.capacity >= min_capacity) {
         return true;
     }
-    size_t new_capacity = obj->data.array.capacity ? obj->data.array.capacity * 2 : 4;
+    size_t new_capacity = obj->data.list.capacity ? obj->data.list.capacity * 2 : 4;
     while (new_capacity < min_capacity) {
         new_capacity *= 2;
     }
-    olib_object_t** new_items = olib_realloc(obj->data.array.items, new_capacity * sizeof(olib_object_t*));
+    olib_object_t** new_items = olib_realloc(obj->data.list.items, new_capacity * sizeof(olib_object_t*));
     if (!new_items) {
         return false;
     }
-    obj->data.array.items = new_items;
-    obj->data.array.capacity = new_capacity;
+    obj->data.list.items = new_items;
+    obj->data.list.capacity = new_capacity;
     return true;
 }
 
-OLIB_API bool olib_object_array_set(olib_object_t* obj, size_t index, olib_object_t* value) {
-    if (!obj || obj->type != OLIB_OBJECT_TYPE_ARRAY) {
+OLIB_API bool olib_object_list_set(olib_object_t* obj, size_t index, olib_object_t* value) {
+    if (!obj || obj->type != OLIB_OBJECT_TYPE_LIST) {
         return false;
     }
-    if (index >= obj->data.array.size) {
+    if (index >= obj->data.list.size) {
         return false;
     }
-    olib_object_free(obj->data.array.items[index]);
-    obj->data.array.items[index] = value;
+    olib_object_free(obj->data.list.items[index]);
+    obj->data.list.items[index] = value;
     return true;
 }
 
-OLIB_API bool olib_object_array_insert(olib_object_t* obj, size_t index, olib_object_t* value) {
-    if (!obj || obj->type != OLIB_OBJECT_TYPE_ARRAY) {
+OLIB_API bool olib_object_list_insert(olib_object_t* obj, size_t index, olib_object_t* value) {
+    if (!obj || obj->type != OLIB_OBJECT_TYPE_LIST) {
         return false;
     }
-    if (index > obj->data.array.size) {
+    if (index > obj->data.list.size) {
         return false;
     }
-    if (!olib_object_array_grow(obj, obj->data.array.size + 1)) {
+    if (!olib_object_list_grow(obj, obj->data.list.size + 1)) {
         return false;
     }
-    for (size_t i = obj->data.array.size; i > index; i--) {
-        obj->data.array.items[i] = obj->data.array.items[i - 1];
+    for (size_t i = obj->data.list.size; i > index; i--) {
+        obj->data.list.items[i] = obj->data.list.items[i - 1];
     }
-    obj->data.array.items[index] = value;
-    obj->data.array.size++;
+    obj->data.list.items[index] = value;
+    obj->data.list.size++;
     return true;
 }
 
-OLIB_API bool olib_object_array_remove(olib_object_t* obj, size_t index) {
-    if (!obj || obj->type != OLIB_OBJECT_TYPE_ARRAY) {
+OLIB_API bool olib_object_list_remove(olib_object_t* obj, size_t index) {
+    if (!obj || obj->type != OLIB_OBJECT_TYPE_LIST) {
         return false;
     }
-    if (index >= obj->data.array.size) {
+    if (index >= obj->data.list.size) {
         return false;
     }
-    olib_object_free(obj->data.array.items[index]);
-    for (size_t i = index; i < obj->data.array.size - 1; i++) {
-        obj->data.array.items[i] = obj->data.array.items[i + 1];
+    olib_object_free(obj->data.list.items[index]);
+    for (size_t i = index; i < obj->data.list.size - 1; i++) {
+        obj->data.list.items[i] = obj->data.list.items[i + 1];
     }
-    obj->data.array.size--;
+    obj->data.list.size--;
     return true;
 }
 
-OLIB_API bool olib_object_array_push(olib_object_t* obj, olib_object_t* value) {
-    if (!obj || obj->type != OLIB_OBJECT_TYPE_ARRAY) {
+OLIB_API bool olib_object_list_push(olib_object_t* obj, olib_object_t* value) {
+    if (!obj || obj->type != OLIB_OBJECT_TYPE_LIST) {
         return false;
     }
-    return olib_object_array_insert(obj, obj->data.array.size, value);
+    return olib_object_list_insert(obj, obj->data.list.size, value);
 }
 
-OLIB_API bool olib_object_array_pop(olib_object_t* obj) {
-    if (!obj || obj->type != OLIB_OBJECT_TYPE_ARRAY) {
+OLIB_API bool olib_object_list_pop(olib_object_t* obj) {
+    if (!obj || obj->type != OLIB_OBJECT_TYPE_LIST) {
         return false;
     }
-    if (obj->data.array.size == 0) {
+    if (obj->data.list.size == 0) {
         return false;
     }
-    return olib_object_array_remove(obj, obj->data.array.size - 1);
+    return olib_object_list_remove(obj, obj->data.list.size - 1);
 }
 
 // #############################################################################

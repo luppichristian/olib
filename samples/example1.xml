@@ -5,12 +5,12 @@
   <float_value type="float">3.14159</float_value>
   <string_value type="string">Hello, World!</string_value>
   <bool_value type="bool">true</bool_value>
-  <array_simple type="array">
+  <list_simple type="list">
     <item type="int">100</item>
     <item type="int">200</item>
     <item type="int">300</item>
-  </array_simple>
-  <array_mixed type="array">
+  </list_simple>
+  <list_mixed type="list">
     <item type="struct">
       <name type="string">Alice</name>
       <age type="int">30</age>
@@ -19,7 +19,7 @@
       <name type="string">Bob</name>
       <age type="int">25</age>
     </item>
-  </array_mixed>
+  </list_mixed>
   <nested_struct type="struct">
     <nested_int type="int">999</nested_int>
     <nested_float type="float">2.71828</nested_float>

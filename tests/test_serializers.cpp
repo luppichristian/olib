@@ -287,19 +287,19 @@ TEST(SerializerBinary, RoundTripMatrix) {
 TEST(SerializerBinary, EdgeCases) {
   olib_serializer_t* ser = olib_serializer_new_binary();
 
-  // Test empty array
-  olib_object_t* empty_arr = olib_object_new(OLIB_OBJECT_TYPE_ARRAY);
+  // Test empty list
+  olib_object_t* empty_lst = olib_object_new(OLIB_OBJECT_TYPE_LIST);
   uint8_t* data = nullptr;
   size_t size = 0;
-  EXPECT_TRUE(olib_serializer_write(ser, empty_arr, &data, &size));
+  EXPECT_TRUE(olib_serializer_write(ser, empty_lst, &data, &size));
 
-  olib_object_t* parsed_arr = olib_serializer_read(ser, data, size);
-  ASSERT_NE(parsed_arr, nullptr);
-  EXPECT_EQ(olib_object_array_size(parsed_arr), 0u);
+  olib_object_t* parsed_lst = olib_serializer_read(ser, data, size);
+  ASSERT_NE(parsed_lst, nullptr);
+  EXPECT_EQ(olib_object_list_size(parsed_lst), 0u);
 
   olib_free(data);
-  olib_object_free(empty_arr);
-  olib_object_free(parsed_arr);
+  olib_object_free(empty_lst);
+  olib_object_free(parsed_lst);
 
   // Test empty struct
   olib_object_t* empty_struct = olib_object_new(OLIB_OBJECT_TYPE_STRUCT);

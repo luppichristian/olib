@@ -34,7 +34,7 @@ SOFTWARE.
 #define JSONB_TAG_FLOAT  0x03  // double (8 bytes IEEE 754 little-endian)
 #define JSONB_TAG_STRING 0x04  // string (4-byte length + UTF-8 data, no null terminator)
 #define JSONB_TAG_BOOL   0x05  // bool (1 byte: 0 or 1)
-#define JSONB_TAG_ARRAY  0x06  // array (4-byte count + elements)
+#define JSONB_TAG_LIST  0x06  // list (4-byte count + elements)
 #define JSONB_TAG_STRUCT 0x07  // struct (key-value pairs, ends with 0-length key)
 #define JSONB_TAG_MATRIX 0x08  // matrix (4-byte ndims + dims[] + data[])
 
@@ -206,13 +206,13 @@ static bool jsonb_write_bool(void* ctx, bool value) {
   return jsonb_write_u8(c, value ? 1 : 0);
 }
 
-static bool jsonb_write_array_begin(void* ctx, size_t size) {
+static bool jsonb_write_list_begin(void* ctx, size_t size) {
   jsonb_ctx_t* c = (jsonb_ctx_t*)ctx;
-  if (!jsonb_write_u8(c, JSONB_TAG_ARRAY)) return false;
+  if (!jsonb_write_u8(c, JSONB_TAG_LIST)) return false;
   return jsonb_write_u32(c, (uint32_t)size);
 }
 
-static bool jsonb_write_array_end(void* ctx) {
+static bool jsonb_write_list_end(void* ctx) {
   (void)ctx;
   return true;
 }
@@ -273,7 +273,7 @@ static olib_object_type_t jsonb_read_peek(void* ctx) {
     case JSONB_TAG_FLOAT:  return OLIB_OBJECT_TYPE_FLOAT;
     case JSONB_TAG_STRING: return OLIB_OBJECT_TYPE_STRING;
     case JSONB_TAG_BOOL:   return OLIB_OBJECT_TYPE_BOOL;
-    case JSONB_TAG_ARRAY:  return OLIB_OBJECT_TYPE_ARRAY;
+    case JSONB_TAG_LIST:  return OLIB_OBJECT_TYPE_LIST;
     case JSONB_TAG_STRUCT: return OLIB_OBJECT_TYPE_STRUCT;
     case JSONB_TAG_MATRIX: return OLIB_OBJECT_TYPE_MATRIX;
     default:               return OLIB_OBJECT_TYPE_MAX;
@@ -346,17 +346,17 @@ static bool jsonb_read_bool(void* ctx, bool* value) {
   return true;
 }
 
-static bool jsonb_read_array_begin(void* ctx, size_t* size) {
+static bool jsonb_read_list_begin(void* ctx, size_t* size) {
   jsonb_ctx_t* c = (jsonb_ctx_t*)ctx;
   uint8_t tag;
-  if (!jsonb_read_u8(c, &tag) || tag != JSONB_TAG_ARRAY) return false;
+  if (!jsonb_read_u8(c, &tag) || tag != JSONB_TAG_LIST) return false;
   uint32_t count;
   if (!jsonb_read_u32(c, &count)) return false;
   *size = count;
   return true;
 }
 
-static bool jsonb_read_array_end(void* ctx) {
+static bool jsonb_read_list_end(void* ctx) {
   (void)ctx;
   return true;
 }
@@ -515,8 +515,8 @@ OLIB_API olib_serializer_t* olib_serializer_new_json_binary() {
     .write_float = jsonb_write_float,
     .write_string = jsonb_write_string,
     .write_bool = jsonb_write_bool,
-    .write_array_begin = jsonb_write_array_begin,
-    .write_array_end = jsonb_write_array_end,
+    .write_list_begin = jsonb_write_list_begin,
+    .write_list_end = jsonb_write_list_end,
     .write_struct_begin = jsonb_write_struct_begin,
     .write_struct_key = jsonb_write_struct_key,
     .write_struct_end = jsonb_write_struct_end,
@@ -528,8 +528,8 @@ OLIB_API olib_serializer_t* olib_serializer_new_json_binary() {
     .read_float = jsonb_read_float,
     .read_string = jsonb_read_string,
     .read_bool = jsonb_read_bool,
-    .read_array_begin = jsonb_read_array_begin,
-    .read_array_end = jsonb_read_array_end,
+    .read_list_begin = jsonb_read_list_begin,
+    .read_list_end = jsonb_read_list_end,
     .read_struct_begin = jsonb_read_struct_begin,
     .read_struct_key = jsonb_read_struct_key,
     .read_struct_end = jsonb_read_struct_end,

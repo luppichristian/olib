@@ -53,8 +53,8 @@ typedef struct olib_serializer_config_t {
   bool (*write_float)(void* ctx, double value);
   bool (*write_string)(void* ctx, const char* value);
   bool (*write_bool)(void* ctx, bool value);
-  bool (*write_array_begin)(void* ctx, size_t size);
-  bool (*write_array_end)(void* ctx);
+  bool (*write_list_begin)(void* ctx, size_t size);
+  bool (*write_list_end)(void* ctx);
   bool (*write_struct_begin)(void* ctx);
   bool (*write_struct_key)(void* ctx, const char* key);
   bool (*write_struct_end)(void* ctx);
@@ -67,8 +67,8 @@ typedef struct olib_serializer_config_t {
   bool (*read_float)(void* ctx, double* value);
   bool (*read_string)(void* ctx, const char** value);  // Returns pointer, valid until next read
   bool (*read_bool)(void* ctx, bool* value);
-  bool (*read_array_begin)(void* ctx, size_t* size);
-  bool (*read_array_end)(void* ctx);
+  bool (*read_list_begin)(void* ctx, size_t* size);
+  bool (*read_list_end)(void* ctx);
   bool (*read_struct_begin)(void* ctx);
   bool (*read_struct_key)(void* ctx, const char** key);  // Returns false when no more keys
   bool (*read_struct_end)(void* ctx);

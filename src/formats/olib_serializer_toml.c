@@ -39,8 +39,8 @@ typedef struct {
   size_t write_capacity;
   size_t write_size;
   int nesting_level;       // Track nesting depth (0 = top-level table)
-  bool in_array;
-  bool array_first_item;
+  bool in_list;
+  bool list_first_item;
   bool in_inline_table;    // Inside inline table { }
   bool inline_first_item;
   const char* pending_key;
@@ -145,13 +145,13 @@ static bool toml_write_key_prefix(toml_ctx_t* ctx) {
   return true;
 }
 
-// Write separator for array items or inline table items
+// Write separator for list items or inline table items
 static bool toml_write_item_separator(toml_ctx_t* ctx) {
-  if (ctx->in_array) {
-    if (!ctx->array_first_item) {
+  if (ctx->in_list) {
+    if (!ctx->list_first_item) {
       if (!toml_write_str(ctx, ", ")) return false;
     }
-    ctx->array_first_item = false;
+    ctx->list_first_item = false;
   } else if (ctx->in_inline_table) {
     if (!ctx->inline_first_item) {
       if (!toml_write_str(ctx, ", ")) return false;
@@ -176,7 +176,7 @@ static bool toml_write_int(void* ctx, int64_t value) {
   if (!toml_write_str(c, buf)) return false;
 
   // Add newline if at top-level table
-  if (c->nesting_level == 1 && !c->in_array && !c->in_inline_table) {
+  if (c->nesting_level == 1 && !c->in_list && !c->in_inline_table) {
     if (!toml_write_char(c, '\n')) return false;
   }
 
@@ -194,7 +194,7 @@ static bool toml_write_uint(void* ctx, uint64_t value) {
   if (!toml_write_str(c, buf)) return false;
 
   // Add newline if at top-level table
-  if (c->nesting_level == 1 && !c->in_array && !c->in_inline_table) {
+  if (c->nesting_level == 1 && !c->in_list && !c->in_inline_table) {
     if (!toml_write_char(c, '\n')) return false;
   }
 
@@ -224,7 +224,7 @@ static bool toml_write_float(void* ctx, double value) {
   }
 
   // Add newline if at top-level table
-  if (c->nesting_level == 1 && !c->in_array && !c->in_inline_table) {
+  if (c->nesting_level == 1 && !c->in_list && !c->in_inline_table) {
     if (!toml_write_char(c, '\n')) return false;
   }
 
@@ -279,7 +279,7 @@ static bool toml_write_string(void* ctx, const char* value) {
   if (!toml_write_char(c, '"')) return false;
 
   // Add newline if at top-level table
-  if (c->nesting_level == 1 && !c->in_array && !c->in_inline_table) {
+  if (c->nesting_level == 1 && !c->in_list && !c->in_inline_table) {
     if (!toml_write_char(c, '\n')) return false;
   }
 
@@ -295,14 +295,14 @@ static bool toml_write_bool(void* ctx, bool value) {
   if (!toml_write_str(c, value ? "true" : "false")) return false;
 
   // Add newline if at top-level table
-  if (c->nesting_level == 1 && !c->in_array && !c->in_inline_table) {
+  if (c->nesting_level == 1 && !c->in_list && !c->in_inline_table) {
     if (!toml_write_char(c, '\n')) return false;
   }
 
   return true;
 }
 
-static bool toml_write_array_begin(void* ctx, size_t size) {
+static bool toml_write_list_begin(void* ctx, size_t size) {
   (void)size;
   toml_ctx_t* c = (toml_ctx_t*)ctx;
 
@@ -310,15 +310,15 @@ static bool toml_write_array_begin(void* ctx, size_t size) {
   if (!toml_write_key_prefix(c)) return false;
 
   if (!toml_write_char(c, '[')) return false;
-  c->in_array = true;
-  c->array_first_item = true;
+  c->in_list = true;
+  c->list_first_item = true;
   return true;
 }
 
-static bool toml_write_array_end(void* ctx) {
+static bool toml_write_list_end(void* ctx) {
   toml_ctx_t* c = (toml_ctx_t*)ctx;
   if (!toml_write_char(c, ']')) return false;
-  c->in_array = false;
+  c->in_list = false;
 
   // Add newline if at top-level table
   if (c->nesting_level == 1 && !c->in_inline_table) {
@@ -335,12 +335,12 @@ static bool toml_write_struct_begin(void* ctx) {
   // If nesting level 1 and not inline, this is a top-level table (section header)
   // If nesting level > 1, we must use inline tables
 
-  if (c->in_array) {
-    // Struct inside array - must be inline
-    if (!c->array_first_item) {
+  if (c->in_list) {
+    // Struct inside list - must be inline
+    if (!c->list_first_item) {
       if (!toml_write_str(c, ", ")) return false;
     }
-    c->array_first_item = false;
+    c->list_first_item = false;
     if (!toml_write_char(c, '{')) return false;
     c->in_inline_table = true;
     c->inline_first_item = true;
@@ -391,7 +391,7 @@ static bool toml_write_struct_end(void* ctx) {
     // Check if we're exiting the inline table
     if (c->nesting_level == 1) {
       c->in_inline_table = false;
-      if (!c->in_array) {
+      if (!c->in_list) {
         if (!toml_write_char(c, '\n')) return false;
       }
     }
@@ -445,7 +445,7 @@ static bool toml_write_matrix(void* ctx, size_t ndims, const size_t* dims, const
   if (!toml_write_str(c, "] }")) return false;
 
   // Add newline if at top-level table
-  if (c->nesting_level == 1 && !c->in_array && !c->in_inline_table) {
+  if (c->nesting_level == 1 && !c->in_list && !c->in_inline_table) {
     if (!toml_write_char(c, '\n')) return false;
   }
 
@@ -495,7 +495,7 @@ static olib_object_type_t toml_read_peek(void* ctx) {
   text_parse_ctx_t* p = &c->parse;
   toml_skip_whitespace_and_comments(p);
 
-  // Skip comma if present (between array/inline table elements)
+  // Skip comma if present (between list/inline table elements)
   if (p->pos < p->size && p->buffer[p->pos] == ',') {
     p->pos++;
     toml_skip_whitespace_and_comments(p);
@@ -519,7 +519,7 @@ static olib_object_type_t toml_read_peek(void* ctx) {
 
   // Array
   if (ch == '[') {
-    return OLIB_OBJECT_TYPE_ARRAY;
+    return OLIB_OBJECT_TYPE_LIST;
   }
 
   // Number
@@ -639,7 +639,7 @@ static bool toml_read_bool(void* ctx, bool* value) {
   return false;
 }
 
-static bool toml_read_array_begin(void* ctx, size_t* size) {
+static bool toml_read_list_begin(void* ctx, size_t* size) {
   toml_ctx_t* c = (toml_ctx_t*)ctx;
   text_parse_ctx_t* p = &c->parse;
 
@@ -698,17 +698,17 @@ static bool toml_read_array_begin(void* ctx, size_t* size) {
   }
 
   *size = count;
-  c->in_array = true;
-  c->array_first_item = true;
+  c->in_list = true;
+  c->list_first_item = true;
   return true;
 }
 
-static bool toml_read_array_end(void* ctx) {
+static bool toml_read_list_end(void* ctx) {
   toml_ctx_t* c = (toml_ctx_t*)ctx;
   text_parse_ctx_t* p = &c->parse;
   toml_skip_whitespace_and_comments(p);
   text_parse_match(p, ',');  // Optional trailing comma
-  c->in_array = false;
+  c->in_list = false;
   return text_parse_match(p, ']');
 }
 
@@ -818,7 +818,7 @@ static bool toml_read_matrix(void* ctx, size_t* ndims, size_t** dims, double** d
     toml_skip_whitespace_and_comments(p);
 
     if (strcmp(key, "dims") == 0) {
-      // Parse dims array
+      // Parse dims list
       if (!text_parse_match(p, '[')) goto error;
 
       size_t dim_cap = 4;
@@ -844,7 +844,7 @@ static bool toml_read_matrix(void* ctx, size_t* ndims, size_t** dims, double** d
       got_dims = true;
 
     } else if (strcmp(key, "data") == 0) {
-      // Parse data array
+      // Parse data list
       if (!text_parse_match(p, '[')) goto error;
 
       size_t data_cap = 64;
@@ -908,8 +908,8 @@ static bool toml_init_write(void* ctx) {
   toml_ctx_t* c = (toml_ctx_t*)ctx;
   c->write_size = 0;
   c->nesting_level = 0;
-  c->in_array = false;
-  c->array_first_item = true;
+  c->in_list = false;
+  c->list_first_item = true;
   c->in_inline_table = false;
   c->inline_first_item = true;
   c->pending_key = NULL;
@@ -939,7 +939,7 @@ static bool toml_init_read(void* ctx, const uint8_t* data, size_t size) {
   toml_ctx_t* c = (toml_ctx_t*)ctx;
   text_parse_init(&c->parse, (const char*)data, size);
   c->nesting_level = 0;
-  c->in_array = false;
+  c->in_list = false;
   c->in_inline_table = false;
   return true;
 }
@@ -974,8 +974,8 @@ OLIB_API olib_serializer_t* olib_serializer_new_toml() {
     .write_float = toml_write_float,
     .write_string = toml_write_string,
     .write_bool = toml_write_bool,
-    .write_array_begin = toml_write_array_begin,
-    .write_array_end = toml_write_array_end,
+    .write_list_begin = toml_write_list_begin,
+    .write_list_end = toml_write_list_end,
     .write_struct_begin = toml_write_struct_begin,
     .write_struct_key = toml_write_struct_key,
     .write_struct_end = toml_write_struct_end,
@@ -987,8 +987,8 @@ OLIB_API olib_serializer_t* olib_serializer_new_toml() {
     .read_float = toml_read_float,
     .read_string = toml_read_string,
     .read_bool = toml_read_bool,
-    .read_array_begin = toml_read_array_begin,
-    .read_array_end = toml_read_array_end,
+    .read_list_begin = toml_read_list_begin,
+    .read_list_end = toml_read_list_end,
     .read_struct_begin = toml_read_struct_begin,
     .read_struct_key = toml_read_struct_key,
     .read_struct_end = toml_read_struct_end,

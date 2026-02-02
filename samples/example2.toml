@@ -17,12 +17,12 @@ enabled = true
 disabled = false
 active = true
 
-data_array = [1, 2, 3, 5, 8, 13, 21, 34]
-string_array = ["red", "green", "blue"]
+data_list = [1, 2, 3, 5, 8, 13, 21, 34]
+string_list = ["red", "green", "blue"]
 
 [matrix_3d]
 dims = [2, 2, 2]
 data = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]
 
-empty_array = []
+empty_list = []
 empty_struct = {}

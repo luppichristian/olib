@@ -49,8 +49,8 @@ typedef struct {
   size_t write_capacity;
   size_t write_size;
   int indent_level;
-  bool in_array;
-  bool array_first_item;
+  bool in_list;
+  bool list_first_item;
   bool in_struct;
   bool struct_first_item;
   const char* pending_key;
@@ -177,8 +177,8 @@ static bool xml_write_struct_value_begin(xml_ctx_t* ctx, const char* type_tag) {
     if (!xml_write_str(ctx, "\">")) return false;
     ctx->pending_key = NULL;
     return true;
-  } else if (ctx->in_array) {
-    // Inside array: <item type="int">value</item>
+  } else if (ctx->in_list) {
+    // Inside list: <item type="int">value</item>
     if (!xml_write_str(ctx, "<item type=\"")) return false;
     if (!xml_write_str(ctx, type_tag)) return false;
     if (!xml_write_str(ctx, "\">")) return false;
@@ -194,7 +194,7 @@ static bool xml_write_struct_value_end(xml_ctx_t* ctx, const char* type_tag) {
   if (ctx->in_struct) {
     // Close </key>
     if (!xml_write_str(ctx, "</key>")) return false;
-  } else if (ctx->in_array) {
+  } else if (ctx->in_list) {
     // Close </item>
     if (!xml_write_str(ctx, "</item>")) return false;
   } else {
@@ -211,11 +211,11 @@ static bool xml_write_struct_value_end(xml_ctx_t* ctx, const char* type_tag) {
 static bool xml_write_int(void* ctx, int64_t value) {
   xml_ctx_t* c = (xml_ctx_t*)ctx;
 
-  if (c->in_array) {
-    if (!c->array_first_item) {
+  if (c->in_list) {
+    if (!c->list_first_item) {
       if (!xml_write_char(c, '\n')) return false;
     }
-    c->array_first_item = false;
+    c->list_first_item = false;
     if (!xml_write_indent(c)) return false;
   } else if (c->in_struct) {
     if (!c->struct_first_item) {
@@ -238,11 +238,11 @@ static bool xml_write_int(void* ctx, int64_t value) {
 static bool xml_write_uint(void* ctx, uint64_t value) {
   xml_ctx_t* c = (xml_ctx_t*)ctx;
 
-  if (c->in_array) {
-    if (!c->array_first_item) {
+  if (c->in_list) {
+    if (!c->list_first_item) {
       if (!xml_write_char(c, '\n')) return false;
     }
-    c->array_first_item = false;
+    c->list_first_item = false;
     if (!xml_write_indent(c)) return false;
   } else if (c->in_struct) {
     if (!c->struct_first_item) {
@@ -265,11 +265,11 @@ static bool xml_write_uint(void* ctx, uint64_t value) {
 static bool xml_write_float(void* ctx, double value) {
   xml_ctx_t* c = (xml_ctx_t*)ctx;
 
-  if (c->in_array) {
-    if (!c->array_first_item) {
+  if (c->in_list) {
+    if (!c->list_first_item) {
       if (!xml_write_char(c, '\n')) return false;
     }
-    c->array_first_item = false;
+    c->list_first_item = false;
     if (!xml_write_indent(c)) return false;
   } else if (c->in_struct) {
     if (!c->struct_first_item) {
@@ -292,11 +292,11 @@ static bool xml_write_float(void* ctx, double value) {
 static bool xml_write_string(void* ctx, const char* value) {
   xml_ctx_t* c = (xml_ctx_t*)ctx;
 
-  if (c->in_array) {
-    if (!c->array_first_item) {
+  if (c->in_list) {
+    if (!c->list_first_item) {
       if (!xml_write_char(c, '\n')) return false;
     }
-    c->array_first_item = false;
+    c->list_first_item = false;
     if (!xml_write_indent(c)) return false;
   } else if (c->in_struct) {
     if (!c->struct_first_item) {
@@ -315,11 +315,11 @@ static bool xml_write_string(void* ctx, const char* value) {
 static bool xml_write_bool(void* ctx, bool value) {
   xml_ctx_t* c = (xml_ctx_t*)ctx;
 
-  if (c->in_array) {
-    if (!c->array_first_item) {
+  if (c->in_list) {
+    if (!c->list_first_item) {
       if (!xml_write_char(c, '\n')) return false;
     }
-    c->array_first_item = false;
+    c->list_first_item = false;
     if (!xml_write_indent(c)) return false;
   } else if (c->in_struct) {
     if (!c->struct_first_item) {
@@ -335,15 +335,15 @@ static bool xml_write_bool(void* ctx, bool value) {
   return true;
 }
 
-static bool xml_write_array_begin(void* ctx, size_t size) {
+static bool xml_write_list_begin(void* ctx, size_t size) {
   (void)size;
   xml_ctx_t* c = (xml_ctx_t*)ctx;
 
-  if (c->in_array) {
-    if (!c->array_first_item) {
+  if (c->in_list) {
+    if (!c->list_first_item) {
       if (!xml_write_char(c, '\n')) return false;
     }
-    c->array_first_item = false;
+    c->list_first_item = false;
     if (!xml_write_indent(c)) return false;
   } else if (c->in_struct) {
     if (!c->struct_first_item) {
@@ -357,34 +357,34 @@ static bool xml_write_array_begin(void* ctx, size_t size) {
   if (c->in_struct && c->pending_key) {
     if (!xml_write_str(c, "<key name=\"")) return false;
     if (!xml_write_escaped(c, c->pending_key)) return false;
-    if (!xml_write_str(c, "\" type=\"array\">")) return false;
+    if (!xml_write_str(c, "\" type=\"list\">")) return false;
     c->pending_key = NULL;
-  } else if (c->in_array) {
-    if (!xml_write_str(c, "<item type=\"array\">")) return false;
+  } else if (c->in_list) {
+    if (!xml_write_str(c, "<item type=\"list\">")) return false;
   } else {
-    if (!xml_write_str(c, "<array>")) return false;
+    if (!xml_write_str(c, "<list>")) return false;
   }
 
   if (!xml_write_char(c, '\n')) return false;
   c->indent_level++;
-  c->in_array = true;
-  c->array_first_item = true;
+  c->in_list = true;
+  c->list_first_item = true;
   return true;
 }
 
-static bool xml_write_array_end(void* ctx) {
+static bool xml_write_list_end(void* ctx) {
   xml_ctx_t* c = (xml_ctx_t*)ctx;
   c->indent_level--;
   if (!xml_write_char(c, '\n')) return false;
   if (!xml_write_indent(c)) return false;
 
   // Determine what closing tag to use based on context
-  // Since we're ending an array, we were in_array before
-  c->in_array = false;
+  // Since we're ending an list, we were in_list before
+  c->in_list = false;
 
-  // For simplicity, always use </array> since the outer context
+  // For simplicity, always use </list> since the outer context
   // determines the opening tag type (key or item)
-  if (!xml_write_str(c, "</array>")) return false;
+  if (!xml_write_str(c, "</list>")) return false;
 
   return true;
 }
@@ -392,11 +392,11 @@ static bool xml_write_array_end(void* ctx) {
 static bool xml_write_struct_begin(void* ctx) {
   xml_ctx_t* c = (xml_ctx_t*)ctx;
 
-  if (c->in_array) {
-    if (!c->array_first_item) {
+  if (c->in_list) {
+    if (!c->list_first_item) {
       if (!xml_write_char(c, '\n')) return false;
     }
-    c->array_first_item = false;
+    c->list_first_item = false;
     if (!xml_write_indent(c)) return false;
   } else if (c->in_struct) {
     if (!c->struct_first_item) {
@@ -412,7 +412,7 @@ static bool xml_write_struct_begin(void* ctx) {
     if (!xml_write_escaped(c, c->pending_key)) return false;
     if (!xml_write_str(c, "\" type=\"struct\">")) return false;
     c->pending_key = NULL;
-  } else if (c->in_array) {
+  } else if (c->in_list) {
     if (!xml_write_str(c, "<item type=\"struct\">")) return false;
   } else {
     if (!xml_write_str(c, "<struct>")) return false;
@@ -444,11 +444,11 @@ static bool xml_write_struct_end(void* ctx) {
 static bool xml_write_matrix(void* ctx, size_t ndims, const size_t* dims, const double* data) {
   xml_ctx_t* c = (xml_ctx_t*)ctx;
 
-  if (c->in_array) {
-    if (!c->array_first_item) {
+  if (c->in_list) {
+    if (!c->list_first_item) {
       if (!xml_write_char(c, '\n')) return false;
     }
-    c->array_first_item = false;
+    c->list_first_item = false;
     if (!xml_write_indent(c)) return false;
   } else if (c->in_struct) {
     if (!c->struct_first_item) {
@@ -476,7 +476,7 @@ static bool xml_write_matrix(void* ctx, size_t ndims, const size_t* dims, const 
     if (!xml_write_str(c, dims_str)) return false;
     if (!xml_write_str(c, "\">")) return false;
     c->pending_key = NULL;
-  } else if (c->in_array) {
+  } else if (c->in_list) {
     if (!xml_write_str(c, "<item type=\"matrix\" dims=\"")) return false;
     if (!xml_write_str(c, dims_str)) return false;
     if (!xml_write_str(c, "\">")) return false;
@@ -504,7 +504,7 @@ static bool xml_write_matrix(void* ctx, size_t ndims, const size_t* dims, const 
   // Close tag
   if (c->in_struct) {
     if (!xml_write_str(c, "</key>")) return false;
-  } else if (c->in_array) {
+  } else if (c->in_list) {
     if (!xml_write_str(c, "</item>")) return false;
   } else {
     if (!xml_write_str(c, "</matrix>")) return false;
@@ -779,7 +779,8 @@ static olib_object_type_t xml_get_type_from_tag(const xml_tag_info_t* info) {
   if (strcmp(type_str, "float") == 0) return OLIB_OBJECT_TYPE_FLOAT;
   if (strcmp(type_str, "string") == 0) return OLIB_OBJECT_TYPE_STRING;
   if (strcmp(type_str, "bool") == 0) return OLIB_OBJECT_TYPE_BOOL;
-  if (strcmp(type_str, "array") == 0) return OLIB_OBJECT_TYPE_ARRAY;
+  if (strcmp(type_str, "list") == 0) return OLIB_OBJECT_TYPE_LIST;  // Legacy support
+  if (strcmp(type_str, "list") == 0) return OLIB_OBJECT_TYPE_LIST;
   if (strcmp(type_str, "struct") == 0) return OLIB_OBJECT_TYPE_STRUCT;
   if (strcmp(type_str, "matrix") == 0) return OLIB_OBJECT_TYPE_MATRIX;
 
@@ -999,7 +1000,7 @@ static bool xml_read_bool(void* ctx, bool* value) {
   return true;
 }
 
-static bool xml_read_array_begin(void* ctx, size_t* size) {
+static bool xml_read_list_begin(void* ctx, size_t* size) {
   xml_ctx_t* c = (xml_ctx_t*)ctx;
   text_parse_ctx_t* p = &c->parse;
 
@@ -1043,7 +1044,7 @@ static bool xml_read_array_begin(void* ctx, size_t* size) {
   return true;
 }
 
-static bool xml_read_array_end(void* ctx) {
+static bool xml_read_list_end(void* ctx) {
   xml_ctx_t* c = (xml_ctx_t*)ctx;
   text_parse_ctx_t* p = &c->parse;
 
@@ -1240,8 +1241,8 @@ static bool xml_init_write(void* ctx) {
   xml_ctx_t* c = (xml_ctx_t*)ctx;
   c->write_size = 0;
   c->indent_level = 0;
-  c->in_array = false;
-  c->array_first_item = true;
+  c->in_list = false;
+  c->list_first_item = true;
   c->in_struct = false;
   c->struct_first_item = true;
   c->pending_key = NULL;
@@ -1338,8 +1339,8 @@ OLIB_API olib_serializer_t* olib_serializer_new_xml() {
     .write_float = xml_write_float,
     .write_string = xml_write_string,
     .write_bool = xml_write_bool,
-    .write_array_begin = xml_write_array_begin,
-    .write_array_end = xml_write_array_end,
+    .write_list_begin = xml_write_list_begin,
+    .write_list_end = xml_write_list_end,
     .write_struct_begin = xml_write_struct_begin,
     .write_struct_key = xml_write_struct_key,
     .write_struct_end = xml_write_struct_end,
@@ -1351,8 +1352,8 @@ OLIB_API olib_serializer_t* olib_serializer_new_xml() {
     .read_float = xml_read_float,
     .read_string = xml_read_string,
     .read_bool = xml_read_bool,
-    .read_array_begin = xml_read_array_begin,
-    .read_array_end = xml_read_array_end,
+    .read_list_begin = xml_read_list_begin,
+    .read_list_end = xml_read_list_end,
     .read_struct_begin = xml_read_struct_begin,
     .read_struct_key = xml_read_struct_key,
     .read_struct_end = xml_read_struct_end,

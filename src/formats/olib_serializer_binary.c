@@ -34,7 +34,7 @@ SOFTWARE.
 #define BINARY_TAG_FLOAT  0x03
 #define BINARY_TAG_STRING 0x04
 #define BINARY_TAG_BOOL   0x05
-#define BINARY_TAG_ARRAY  0x06
+#define BINARY_TAG_LIST  0x06
 #define BINARY_TAG_STRUCT 0x07
 #define BINARY_TAG_MATRIX 0x08
 
@@ -206,13 +206,13 @@ static bool binary_write_bool(void* ctx, bool value) {
   return binary_write_u8(c, value ? 1 : 0);
 }
 
-static bool binary_write_array_begin(void* ctx, size_t size) {
+static bool binary_write_list_begin(void* ctx, size_t size) {
   binary_ctx_t* c = (binary_ctx_t*)ctx;
-  if (!binary_write_u8(c, BINARY_TAG_ARRAY)) return false;
+  if (!binary_write_u8(c, BINARY_TAG_LIST)) return false;
   return binary_write_u32(c, (uint32_t)size);
 }
 
-static bool binary_write_array_end(void* ctx) {
+static bool binary_write_list_end(void* ctx) {
   (void)ctx;
   return true;
 }
@@ -273,7 +273,7 @@ static olib_object_type_t binary_read_peek(void* ctx) {
     case BINARY_TAG_FLOAT:  return OLIB_OBJECT_TYPE_FLOAT;
     case BINARY_TAG_STRING: return OLIB_OBJECT_TYPE_STRING;
     case BINARY_TAG_BOOL:   return OLIB_OBJECT_TYPE_BOOL;
-    case BINARY_TAG_ARRAY:  return OLIB_OBJECT_TYPE_ARRAY;
+    case BINARY_TAG_LIST:  return OLIB_OBJECT_TYPE_LIST;
     case BINARY_TAG_STRUCT: return OLIB_OBJECT_TYPE_STRUCT;
     case BINARY_TAG_MATRIX: return OLIB_OBJECT_TYPE_MATRIX;
     default:                return OLIB_OBJECT_TYPE_MAX;
@@ -346,17 +346,17 @@ static bool binary_read_bool(void* ctx, bool* value) {
   return true;
 }
 
-static bool binary_read_array_begin(void* ctx, size_t* size) {
+static bool binary_read_list_begin(void* ctx, size_t* size) {
   binary_ctx_t* c = (binary_ctx_t*)ctx;
   uint8_t tag;
-  if (!binary_read_u8(c, &tag) || tag != BINARY_TAG_ARRAY) return false;
+  if (!binary_read_u8(c, &tag) || tag != BINARY_TAG_LIST) return false;
   uint32_t count;
   if (!binary_read_u32(c, &count)) return false;
   *size = count;
   return true;
 }
 
-static bool binary_read_array_end(void* ctx) {
+static bool binary_read_list_end(void* ctx) {
   (void)ctx;
   return true;
 }
@@ -515,8 +515,8 @@ OLIB_API olib_serializer_t* olib_serializer_new_binary() {
     .write_float = binary_write_float,
     .write_string = binary_write_string,
     .write_bool = binary_write_bool,
-    .write_array_begin = binary_write_array_begin,
-    .write_array_end = binary_write_array_end,
+    .write_list_begin = binary_write_list_begin,
+    .write_list_end = binary_write_list_end,
     .write_struct_begin = binary_write_struct_begin,
     .write_struct_key = binary_write_struct_key,
     .write_struct_end = binary_write_struct_end,
@@ -528,8 +528,8 @@ OLIB_API olib_serializer_t* olib_serializer_new_binary() {
     .read_float = binary_read_float,
     .read_string = binary_read_string,
     .read_bool = binary_read_bool,
-    .read_array_begin = binary_read_array_begin,
-    .read_array_end = binary_read_array_end,
+    .read_list_begin = binary_read_list_begin,
+    .read_list_end = binary_read_list_end,
     .read_struct_begin = binary_read_struct_begin,
     .read_struct_key = binary_read_struct_key,
     .read_struct_end = binary_read_struct_end,

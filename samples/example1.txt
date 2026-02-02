@@ -4,12 +4,12 @@
   float_value: 3.14159
   string_value: "Hello, World!"
   bool_value: true
-  array_simple: [
+  list_simple: [
     100
     200
     300
   ]
-  array_mixed: [
+  list_mixed: [
     {
       name: "Alice"
       age: 30

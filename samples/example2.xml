@@ -19,7 +19,7 @@
     <disabled type="bool">false</disabled>
     <active type="bool">true</active>
   </flags>
-  <data_array type="array">
+  <data_list type="list">
     <item type="int">1</item>
     <item type="int">2</item>
     <item type="int">3</item>
@@ -28,16 +28,16 @@
     <item type="int">13</item>
     <item type="int">21</item>
     <item type="int">34</item>
-  </data_array>
-  <string_array type="array">
+  </data_list>
+  <string_list type="list">
     <item type="string">red</item>
     <item type="string">green</item>
     <item type="string">blue</item>
-  </string_array>
+  </string_list>
   <matrix_3d type="matrix">
     <dims>2 2 2</dims>
     <data>1.0 2.0 3.0 4.0 5.0 6.0 7.0 8.0</data>
   </matrix_3d>
-  <empty_array type="array"></empty_array>
+  <empty_list type="list"></empty_list>
   <empty_struct type="struct"></empty_struct>
 </root>

@@ -32,7 +32,7 @@ OLIB_HEADER_BEGIN;
 
 typedef enum olib_object_type_t {
   OLIB_OBJECT_TYPE_STRUCT,
-  OLIB_OBJECT_TYPE_ARRAY,
+  OLIB_OBJECT_TYPE_LIST,
   OLIB_OBJECT_TYPE_INT,
   OLIB_OBJECT_TYPE_UINT,
   OLIB_OBJECT_TYPE_FLOAT,
@@ -61,16 +61,16 @@ OLIB_API bool olib_object_is_container(olib_object_t* obj);
 
 // #############################################################################
 
-// Array getters
-OLIB_API size_t olib_object_array_size(olib_object_t* obj);
-OLIB_API olib_object_t* olib_object_array_get(olib_object_t* obj, size_t index);
+// List getters
+OLIB_API size_t olib_object_list_size(olib_object_t* obj);
+OLIB_API olib_object_t* olib_object_list_get(olib_object_t* obj, size_t index);
 
-// Array setters
-OLIB_API bool olib_object_array_set(olib_object_t* obj, size_t index, olib_object_t* value);
-OLIB_API bool olib_object_array_insert(olib_object_t* obj, size_t index, olib_object_t* value);
-OLIB_API bool olib_object_array_remove(olib_object_t* obj, size_t index);
-OLIB_API bool olib_object_array_push(olib_object_t* obj, olib_object_t* value);
-OLIB_API bool olib_object_array_pop(olib_object_t* obj);
+// List setters
+OLIB_API bool olib_object_list_set(olib_object_t* obj, size_t index, olib_object_t* value);
+OLIB_API bool olib_object_list_insert(olib_object_t* obj, size_t index, olib_object_t* value);
+OLIB_API bool olib_object_list_remove(olib_object_t* obj, size_t index);
+OLIB_API bool olib_object_list_push(olib_object_t* obj, olib_object_t* value);
+OLIB_API bool olib_object_list_pop(olib_object_t* obj);
 
 // #############################################################################
 

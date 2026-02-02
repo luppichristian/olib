@@ -39,8 +39,8 @@ typedef struct {
   size_t write_capacity;
   size_t write_size;
   int indent_level;
-  bool in_array;
-  bool array_first_item;
+  bool in_list;
+  bool list_first_item;
   bool in_struct;
   bool struct_first_item;
   const char* pending_key;
@@ -118,11 +118,11 @@ static bool text_write_key_prefix(text_ctx_t* ctx) {
 static bool text_write_int(void* ctx, int64_t value) {
   text_ctx_t* c = (text_ctx_t*)ctx;
 
-  if (c->in_array) {
-    if (!c->array_first_item) {
+  if (c->in_list) {
+    if (!c->list_first_item) {
       if (!text_write_str(c, ", ")) return false;
     }
-    c->array_first_item = false;
+    c->list_first_item = false;
   } else if (c->in_struct) {
     if (!c->struct_first_item) {
       if (!text_write_char(c, '\n')) return false;
@@ -141,11 +141,11 @@ static bool text_write_int(void* ctx, int64_t value) {
 static bool text_write_uint(void* ctx, uint64_t value) {
   text_ctx_t* c = (text_ctx_t*)ctx;
 
-  if (c->in_array) {
-    if (!c->array_first_item) {
+  if (c->in_list) {
+    if (!c->list_first_item) {
       if (!text_write_str(c, ", ")) return false;
     }
-    c->array_first_item = false;
+    c->list_first_item = false;
   } else if (c->in_struct) {
     if (!c->struct_first_item) {
       if (!text_write_char(c, '\n')) return false;
@@ -164,11 +164,11 @@ static bool text_write_uint(void* ctx, uint64_t value) {
 static bool text_write_float(void* ctx, double value) {
   text_ctx_t* c = (text_ctx_t*)ctx;
 
-  if (c->in_array) {
-    if (!c->array_first_item) {
+  if (c->in_list) {
+    if (!c->list_first_item) {
       if (!text_write_str(c, ", ")) return false;
     }
-    c->array_first_item = false;
+    c->list_first_item = false;
   } else if (c->in_struct) {
     if (!c->struct_first_item) {
       if (!text_write_char(c, '\n')) return false;
@@ -187,11 +187,11 @@ static bool text_write_float(void* ctx, double value) {
 static bool text_write_string(void* ctx, const char* value) {
   text_ctx_t* c = (text_ctx_t*)ctx;
 
-  if (c->in_array) {
-    if (!c->array_first_item) {
+  if (c->in_list) {
+    if (!c->list_first_item) {
       if (!text_write_str(c, ", ")) return false;
     }
-    c->array_first_item = false;
+    c->list_first_item = false;
   } else if (c->in_struct) {
     if (!c->struct_first_item) {
       if (!text_write_char(c, '\n')) return false;
@@ -235,11 +235,11 @@ static bool text_write_string(void* ctx, const char* value) {
 static bool text_write_bool(void* ctx, bool value) {
   text_ctx_t* c = (text_ctx_t*)ctx;
 
-  if (c->in_array) {
-    if (!c->array_first_item) {
+  if (c->in_list) {
+    if (!c->list_first_item) {
       if (!text_write_str(c, ", ")) return false;
     }
-    c->array_first_item = false;
+    c->list_first_item = false;
   } else if (c->in_struct) {
     if (!c->struct_first_item) {
       if (!text_write_char(c, '\n')) return false;
@@ -253,15 +253,15 @@ static bool text_write_bool(void* ctx, bool value) {
   return text_write_str(c, value ? "true" : "false");
 }
 
-static bool text_write_array_begin(void* ctx, size_t size) {
+static bool text_write_list_begin(void* ctx, size_t size) {
   (void)size;
   text_ctx_t* c = (text_ctx_t*)ctx;
 
-  if (c->in_array) {
-    if (!c->array_first_item) {
+  if (c->in_list) {
+    if (!c->list_first_item) {
       if (!text_write_str(c, ", ")) return false;
     }
-    c->array_first_item = false;
+    c->list_first_item = false;
   } else if (c->in_struct) {
     if (!c->struct_first_item) {
       if (!text_write_char(c, '\n')) return false;
@@ -273,26 +273,26 @@ static bool text_write_array_begin(void* ctx, size_t size) {
   if (!text_write_key_prefix(c)) return false;
 
   if (!text_write_str(c, "[ ")) return false;
-  c->in_array = true;
-  c->array_first_item = true;
+  c->in_list = true;
+  c->list_first_item = true;
   return true;
 }
 
-static bool text_write_array_end(void* ctx) {
+static bool text_write_list_end(void* ctx) {
   text_ctx_t* c = (text_ctx_t*)ctx;
   if (!text_write_str(c, " ]")) return false;
-  c->in_array = false;
+  c->in_list = false;
   return true;
 }
 
 static bool text_write_struct_begin(void* ctx) {
   text_ctx_t* c = (text_ctx_t*)ctx;
 
-  if (c->in_array) {
-    if (!c->array_first_item) {
+  if (c->in_list) {
+    if (!c->list_first_item) {
       if (!text_write_str(c, ", ")) return false;
     }
-    c->array_first_item = false;
+    c->list_first_item = false;
   } else if (c->in_struct) {
     if (!c->struct_first_item) {
       if (!text_write_char(c, '\n')) return false;
@@ -329,11 +329,11 @@ static bool text_write_struct_end(void* ctx) {
 static bool text_write_matrix(void* ctx, size_t ndims, const size_t* dims, const double* data) {
   text_ctx_t* c = (text_ctx_t*)ctx;
 
-  if (c->in_array) {
-    if (!c->array_first_item) {
+  if (c->in_list) {
+    if (!c->list_first_item) {
       if (!text_write_str(c, ", ")) return false;
     }
-    c->array_first_item = false;
+    c->list_first_item = false;
   } else if (c->in_struct) {
     if (!c->struct_first_item) {
       if (!text_write_char(c, '\n')) return false;
@@ -344,7 +344,7 @@ static bool text_write_matrix(void* ctx, size_t ndims, const size_t* dims, const
 
   if (!text_write_key_prefix(c)) return false;
 
-  // Format matrix as nested arrays
+  // Format matrix as nested lists
   // For 1D: [ v1, v2, v3 ]
   // For 2D: [ [ row1 ] [ row2 ] ... ]
   // etc.
@@ -380,7 +380,7 @@ static bool text_write_matrix(void* ctx, size_t ndims, const size_t* dims, const
     if (!text_write_indent(c)) return false;
     if (!text_write_char(c, ']')) return false;
   } else {
-    // For higher dimensions, flatten to a single array with dimensions prefix
+    // For higher dimensions, flatten to a single list with dimensions prefix
     if (!text_write_str(c, "mat(")) return false;
     for (size_t i = 0; i < ndims; i++) {
       if (i > 0) {
@@ -419,7 +419,7 @@ static olib_object_type_t text_read_peek(void* ctx) {
   text_parse_ctx_t* p = &c->parse;
   text_parse_skip_whitespace_and_comments(p);
 
-  // Skip comma if present (between array/struct elements)
+  // Skip comma if present (between list/struct elements)
   if (p->pos < p->size && p->buffer[p->pos] == ',') {
     p->pos++;
     text_parse_skip_whitespace_and_comments(p);
@@ -438,7 +438,7 @@ static olib_object_type_t text_read_peek(void* ctx) {
     return OLIB_OBJECT_TYPE_STRUCT;
   }
   if (ch == '[') {
-    return OLIB_OBJECT_TYPE_ARRAY;
+    return OLIB_OBJECT_TYPE_LIST;
   }
   if (ch == '-' || ch == '+' || isdigit((unsigned char)ch)) {
     // Peek ahead to determine if int or float
@@ -517,7 +517,7 @@ static bool text_read_bool(void* ctx, bool* value) {
   return false;
 }
 
-static bool text_read_array_begin(void* ctx, size_t* size) {
+static bool text_read_list_begin(void* ctx, size_t* size) {
   text_ctx_t* c = (text_ctx_t*)ctx;
   text_parse_ctx_t* p = &c->parse;
 
@@ -552,7 +552,7 @@ static bool text_read_array_begin(void* ctx, size_t* size) {
   return true;
 }
 
-static bool text_read_array_end(void* ctx) {
+static bool text_read_list_end(void* ctx) {
   text_ctx_t* c = (text_ctx_t*)ctx;
   text_parse_ctx_t* p = &c->parse;
   text_parse_skip_whitespace(p);
@@ -672,7 +672,7 @@ static bool text_read_matrix(void* ctx, size_t* ndims, size_t** dims, double** d
     return true;
   }
 
-  // Otherwise, parse as nested arrays (1D or 2D)
+  // Otherwise, parse as nested lists (1D or 2D)
   if (!text_parse_match(p, '[')) return false;
 
   text_parse_skip_whitespace(p);
@@ -805,8 +805,8 @@ static bool text_init_write(void* ctx) {
   text_ctx_t* c = (text_ctx_t*)ctx;
   c->write_size = 0;
   c->indent_level = 0;
-  c->in_array = false;
-  c->array_first_item = true;
+  c->in_list = false;
+  c->list_first_item = true;
   c->in_struct = false;
   c->struct_first_item = true;
   c->pending_key = NULL;
@@ -868,8 +868,8 @@ OLIB_API olib_serializer_t* olib_serializer_new_txt() {
     .write_float = text_write_float,
     .write_string = text_write_string,
     .write_bool = text_write_bool,
-    .write_array_begin = text_write_array_begin,
-    .write_array_end = text_write_array_end,
+    .write_list_begin = text_write_list_begin,
+    .write_list_end = text_write_list_end,
     .write_struct_begin = text_write_struct_begin,
     .write_struct_key = text_write_struct_key,
     .write_struct_end = text_write_struct_end,
@@ -881,8 +881,8 @@ OLIB_API olib_serializer_t* olib_serializer_new_txt() {
     .read_float = text_read_float,
     .read_string = text_read_string,
     .read_bool = text_read_bool,
-    .read_array_begin = text_read_array_begin,
-    .read_array_end = text_read_array_end,
+    .read_list_begin = text_read_list_begin,
+    .read_list_end = text_read_list_end,
     .read_struct_begin = text_read_struct_begin,
     .read_struct_key = text_read_struct_key,
     .read_struct_end = text_read_struct_end,

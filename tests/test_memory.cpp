@@ -73,22 +73,22 @@ TEST(Memory, CustomAllocatorsWithStruct)
     olib_set_memory_fns(nullptr, nullptr, nullptr, nullptr);
 }
 
-TEST(Memory, CustomAllocatorsWithArray)
+TEST(Memory, CustomAllocatorsWithList)
 {
     g_malloc_count = 0;
     g_free_count = 0;
 
     olib_set_memory_fns(test_malloc, test_free, test_calloc, test_realloc);
 
-    olib_object_t* arr = olib_object_new(OLIB_OBJECT_TYPE_ARRAY);
+    olib_object_t* arr = olib_object_new(OLIB_OBJECT_TYPE_LIST);
 
     for (int i = 0; i < 5; i++) {
         olib_object_t* val = olib_object_new(OLIB_OBJECT_TYPE_INT);
         olib_object_set_int(val, i);
-        olib_object_array_push(arr, val);
+        olib_object_list_push(arr, val);
     }
 
-    EXPECT_GT(g_malloc_count, 5);  // At least array + 5 values
+    EXPECT_GT(g_malloc_count, 5);  // At least list + 5 values
 
     olib_object_free(arr);
     EXPECT_GT(g_free_count, 0);

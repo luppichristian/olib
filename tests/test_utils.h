@@ -31,13 +31,13 @@ inline olib_object_t* create_test_object()
     olib_object_set_bool(bool_val, true);
     olib_object_struct_add(root, "bool_val", bool_val);
 
-    olib_object_t* array_val = olib_object_new(OLIB_OBJECT_TYPE_ARRAY);
+    olib_object_t* list_val = olib_object_new(OLIB_OBJECT_TYPE_LIST);
     for (int i = 0; i < 3; i++) {
         olib_object_t* elem = olib_object_new(OLIB_OBJECT_TYPE_INT);
         olib_object_set_int(elem, i * 100);
-        olib_object_array_push(array_val, elem);
+        olib_object_list_push(list_val, elem);
     }
-    olib_object_struct_add(root, "array_val", array_val);
+    olib_object_struct_add(root, "list_val", list_val);
 
     olib_object_t* nested = olib_object_new(OLIB_OBJECT_TYPE_STRUCT);
     olib_object_t* nested_int = olib_object_new(OLIB_OBJECT_TYPE_INT);
@@ -59,11 +59,11 @@ inline void verify_test_object(olib_object_t* obj)
     EXPECT_STREQ(olib_object_get_string(olib_object_struct_get(obj, "string_val")), "Hello, World!");
     EXPECT_TRUE(olib_object_get_bool(olib_object_struct_get(obj, "bool_val")));
 
-    olib_object_t* arr = olib_object_struct_get(obj, "array_val");
+    olib_object_t* arr = olib_object_struct_get(obj, "list_val");
     ASSERT_NE(arr, nullptr);
-    EXPECT_EQ(olib_object_array_size(arr), 3u);
+    EXPECT_EQ(olib_object_list_size(arr), 3u);
     for (int i = 0; i < 3; i++) {
-        EXPECT_EQ(olib_object_get_int(olib_object_array_get(arr, i)), i * 100);
+        EXPECT_EQ(olib_object_get_int(olib_object_list_get(arr, i)), i * 100);
     }
 
     olib_object_t* nested = olib_object_struct_get(obj, "nested");
