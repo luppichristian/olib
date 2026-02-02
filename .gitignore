@@ -6,3 +6,4 @@ build/
 CMakeCache.txt
 CMakeSettings.txt
 .claude/settings.local.json
+.claude/
