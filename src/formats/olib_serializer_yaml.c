@@ -54,6 +54,11 @@ typedef struct {
   int read_indent_level;
   bool reading_block_list;  // Track if we're currently reading items from a block list
   int block_list_indent;    // Indentation level of the block list we're reading
+
+  // Track struct indentation for nested block mappings
+  int struct_indent_stack[32];  // Stack of expected key indentation levels
+  int struct_indent_depth;      // Current depth in the stack
+  bool in_flow_struct;          // Whether we're in a flow mapping (curly braces)
 } yaml_ctx_t;
 
 // #############################################################################
@@ -864,10 +869,17 @@ static bool yaml_read_struct_begin(void* ctx) {
 
   // Flow mapping {...}
   if (text_parse_peek_raw(p) == '{') {
+    c->in_flow_struct = true;
     return text_parse_match(p, '{');
   }
 
-  // Block mapping - no delimiter to consume
+  // Block mapping - record expected indentation for keys
+  // Keys should be at the current indentation level
+  int key_indent = yaml_get_line_indent(p);
+  if (c->struct_indent_depth < 32) {
+    c->struct_indent_stack[c->struct_indent_depth++] = key_indent;
+  }
+  c->in_flow_struct = false;
   return true;
 }
 
@@ -887,6 +899,16 @@ static bool yaml_read_struct_key(void* ctx, const char** key) {
   if (ch == '-' && p->pos + 1 < p->size &&
       (p->buffer[p->pos + 1] == ' ' || p->buffer[p->pos + 1] == '\n')) {
     return false;
+  }
+
+  // For block mappings, check if we're still at the expected indentation level
+  // If the key is at a lower indentation, this struct has ended
+  if (!c->in_flow_struct && c->struct_indent_depth > 0) {
+    int current_indent = yaml_get_line_indent(p);
+    int expected_indent = c->struct_indent_stack[c->struct_indent_depth - 1];
+    if (current_indent < expected_indent) {
+      return false;  // Struct has ended (dedented)
+    }
   }
 
   // Read the key
@@ -920,10 +942,14 @@ static bool yaml_read_struct_end(void* ctx) {
   // For flow mappings, consume the closing brace
   if (text_parse_peek_raw(p) == '}') {
     text_parse_match(p, ',');  // Optional trailing comma
+    c->in_flow_struct = false;
     return text_parse_match(p, '}');
   }
 
-  // For block mappings, no delimiter to consume
+  // For block mappings, pop the indentation stack
+  if (c->struct_indent_depth > 0) {
+    c->struct_indent_depth--;
+  }
   return true;
 }
 
@@ -978,6 +1004,8 @@ static bool yaml_init_read(void* ctx, const uint8_t* data, size_t size) {
   c->read_indent_level = 0;
   c->reading_block_list = false;
   c->block_list_indent = 0;
+  c->struct_indent_depth = 0;
+  c->in_flow_struct = false;
   return true;
 }
 

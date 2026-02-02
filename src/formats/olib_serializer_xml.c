@@ -43,6 +43,13 @@ typedef struct {
   bool is_closing_tag;
 } xml_tag_info_t;
 
+// Container tag type for tracking what closing tag to use
+typedef enum {
+  XML_CONTAINER_STANDALONE,  // <list> or <struct>
+  XML_CONTAINER_KEY,         // <key name="..." type="list/struct">
+  XML_CONTAINER_ITEM         // <item type="list/struct">
+} xml_container_type_t;
+
 typedef struct {
   // Write mode
   char* write_buffer;
@@ -55,6 +62,10 @@ typedef struct {
   bool struct_first_item;
   const char* pending_key;
   bool needs_root_close;
+
+  // Track container types for proper closing tags (stack indexed by indent level)
+  xml_container_type_t container_stack[32];
+  int container_depth;
 
   // Read mode (using shared parsing utilities)
   text_parse_ctx_t parse;
@@ -353,16 +364,27 @@ static bool xml_write_list_begin(void* ctx, size_t size) {
     if (!xml_write_indent(c)) return false;
   }
 
+  // Track what type of container tag we're using
+  xml_container_type_t container_type;
+
   // Handle struct key for nested containers
   if (c->in_struct && c->pending_key) {
     if (!xml_write_str(c, "<key name=\"")) return false;
     if (!xml_write_escaped(c, c->pending_key)) return false;
     if (!xml_write_str(c, "\" type=\"list\">")) return false;
     c->pending_key = NULL;
+    container_type = XML_CONTAINER_KEY;
   } else if (c->in_list) {
     if (!xml_write_str(c, "<item type=\"list\">")) return false;
+    container_type = XML_CONTAINER_ITEM;
   } else {
     if (!xml_write_str(c, "<list>")) return false;
+    container_type = XML_CONTAINER_STANDALONE;
+  }
+
+  // Push container type onto stack
+  if (c->container_depth < 32) {
+    c->container_stack[c->container_depth++] = container_type;
   }
 
   if (!xml_write_char(c, '\n')) return false;
@@ -378,13 +400,26 @@ static bool xml_write_list_end(void* ctx) {
   if (!xml_write_char(c, '\n')) return false;
   if (!xml_write_indent(c)) return false;
 
-  // Determine what closing tag to use based on context
-  // Since we're ending an list, we were in_list before
   c->in_list = false;
 
-  // For simplicity, always use </list> since the outer context
-  // determines the opening tag type (key or item)
-  if (!xml_write_str(c, "</list>")) return false;
+  // Pop container type and write matching closing tag
+  xml_container_type_t container_type = XML_CONTAINER_STANDALONE;
+  if (c->container_depth > 0) {
+    container_type = c->container_stack[--c->container_depth];
+  }
+
+  switch (container_type) {
+    case XML_CONTAINER_KEY:
+      if (!xml_write_str(c, "</key>")) return false;
+      break;
+    case XML_CONTAINER_ITEM:
+      if (!xml_write_str(c, "</item>")) return false;
+      break;
+    case XML_CONTAINER_STANDALONE:
+    default:
+      if (!xml_write_str(c, "</list>")) return false;
+      break;
+  }
 
   return true;
 }
@@ -406,16 +441,27 @@ static bool xml_write_struct_begin(void* ctx) {
     if (!xml_write_indent(c)) return false;
   }
 
+  // Track what type of container tag we're using
+  xml_container_type_t container_type;
+
   // Handle struct key for nested containers
   if (c->in_struct && c->pending_key) {
     if (!xml_write_str(c, "<key name=\"")) return false;
     if (!xml_write_escaped(c, c->pending_key)) return false;
     if (!xml_write_str(c, "\" type=\"struct\">")) return false;
     c->pending_key = NULL;
+    container_type = XML_CONTAINER_KEY;
   } else if (c->in_list) {
     if (!xml_write_str(c, "<item type=\"struct\">")) return false;
+    container_type = XML_CONTAINER_ITEM;
   } else {
     if (!xml_write_str(c, "<struct>")) return false;
+    container_type = XML_CONTAINER_STANDALONE;
+  }
+
+  // Push container type onto stack
+  if (c->container_depth < 32) {
+    c->container_stack[c->container_depth++] = container_type;
   }
 
   if (!xml_write_char(c, '\n')) return false;
@@ -436,7 +482,26 @@ static bool xml_write_struct_end(void* ctx) {
   c->indent_level--;
   if (!xml_write_char(c, '\n')) return false;
   if (!xml_write_indent(c)) return false;
-  if (!xml_write_str(c, "</struct>")) return false;
+
+  // Pop container type and write matching closing tag
+  xml_container_type_t container_type = XML_CONTAINER_STANDALONE;
+  if (c->container_depth > 0) {
+    container_type = c->container_stack[--c->container_depth];
+  }
+
+  switch (container_type) {
+    case XML_CONTAINER_KEY:
+      if (!xml_write_str(c, "</key>")) return false;
+      break;
+    case XML_CONTAINER_ITEM:
+      if (!xml_write_str(c, "</item>")) return false;
+      break;
+    case XML_CONTAINER_STANDALONE:
+    default:
+      if (!xml_write_str(c, "</struct>")) return false;
+      break;
+  }
+
   c->in_struct = (c->indent_level > 0);
   return true;
 }
@@ -1076,6 +1141,7 @@ static bool xml_init_write(void* ctx) {
   c->struct_first_item = true;
   c->pending_key = NULL;
   c->needs_root_close = false;
+  c->container_depth = 0;
 
   // Write XML declaration and root element
   if (!xml_write_str(c, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")) return false;
@@ -1123,12 +1189,18 @@ static bool xml_init_read(void* ctx, const uint8_t* data, size_t size) {
   xml_parse_skip_declaration(&c->parse);
   xml_parse_skip_ws_and_comments(&c->parse);
 
-  // Skip root element if present (olib or root)
+  // Peek at the root element to determine format
+  // - <olib> is a wrapper element (serializer's format) - skip it
+  // - <root> is the struct container (sample file format) - keep it
   size_t saved_pos = c->parse.pos;
   xml_tag_info_t info;
   if (xml_parse_tag(&c->parse, &info)) {
-    if (strcmp(info.tag_name, "olib") != 0 && strcmp(info.tag_name, "root") != 0) {
-      // Not a root element, restore position
+    if (strcmp(info.tag_name, "olib") == 0) {
+      // <olib> is a wrapper, skip it - content follows inside
+      // Position is already past <olib>, leave it there
+    } else {
+      // Not <olib>, restore position so peek/read can see it
+      // This handles <root> and other formats where root IS the struct
       c->parse.pos = saved_pos;
     }
   } else {
