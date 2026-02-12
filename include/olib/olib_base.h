@@ -44,6 +44,7 @@ OLIB_HEADER_BEGIN;
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 // #############################################################################
 // OLIB_API macro for shared library symbol visibility
