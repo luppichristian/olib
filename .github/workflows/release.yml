@@ -1,0 +1,122 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+
+jobs:
+  build-release:
+    name: Build ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact_name: olib-convert
+            asset_name: olib-convert-linux-x64
+            archive_ext: tar.gz
+          - os: windows-latest
+            artifact_name: olib-convert.exe
+            asset_name: olib-convert-windows-x64
+            archive_ext: zip
+          - os: macos-latest
+            artifact_name: olib-convert
+            asset_name: olib-convert-macos-x64
+            archive_ext: tar.gz
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up CMake
+      uses: lukka/get-cmake@latest
+    
+    - name: Configure CMake
+      run: |
+        cmake -B build -DCMAKE_BUILD_TYPE=Release -DOLIB_BUILD_CLI=ON -DOLIB_BUILD_TESTS=OFF -DOLIB_BUILD_EXAMPLES=OFF
+    
+    - name: Build
+      run: cmake --build build --config Release
+    
+    - name: Prepare release directory
+      shell: bash
+      run: |
+        mkdir -p release
+        if [ "${{ matrix.os }}" = "windows-latest" ]; then
+          cp build/bin/Release/${{ matrix.artifact_name }} release/ 2>/dev/null || cp build/bin/${{ matrix.artifact_name }} release/
+        else
+          cp build/bin/${{ matrix.artifact_name }} release/
+        fi
+        cp README.md release/
+        cp LICENSE release/
+    
+    - name: Create archive (Linux/macOS)
+      if: matrix.os != 'windows-latest'
+      working-directory: release
+      run: |
+        tar -czf ../${{ matrix.asset_name }}.${{ matrix.archive_ext }} *
+    
+    - name: Create archive (Windows)
+      if: matrix.os == 'windows-latest'
+      working-directory: release
+      shell: pwsh
+      run: |
+        Compress-Archive -Path * -DestinationPath ../${{ matrix.asset_name }}.${{ matrix.archive_ext }}
+    
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.asset_name }}
+        path: ${{ matrix.asset_name }}.${{ matrix.archive_ext }}
+        retention-days: 5
+
+  create-release:
+    name: Create GitHub Release
+    needs: build-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+    
+    - name: Display structure of downloaded files
+      run: ls -R artifacts
+    
+    - name: Get version from tag
+      id: get_version
+      run: |
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+        else
+          echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        fi
+    
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        name: Release ${{ steps.get_version.outputs.version }}
+        tag_name: ${{ steps.get_version.outputs.version }}
+        draft: false
+        prerelease: false
+        generate_release_notes: true
+        files: |
+          artifacts/olib-convert-linux-x64/olib-convert-linux-x64.tar.gz
+          artifacts/olib-convert-windows-x64/olib-convert-windows-x64.zip
+          artifacts/olib-convert-macos-x64/olib-convert-macos-x64.tar.gz
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
