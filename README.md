@@ -1,5 +1,11 @@
 # olib
 
+[![Release](https://img.shields.io/github/v/release/luppichristian/olib)](https://github.com/luppichristian/olib/releases)
+[![Language](https://img.shields.io/badge/language-C11-555555)](https://github.com/luppichristian/olib)
+[![Docs](https://img.shields.io/badge/docs-online-blue)](https://luppichristian.github.io/olib/)
+[![CI](https://img.shields.io/github/actions/workflow/status/luppichristian/olib/ci.yml?branch=main&label=ci)](https://github.com/luppichristian/olib/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
 A lightweight C library for object serialization and format conversion.
 
 olib provides a unified API for working with structured data objects and serializing them to multiple formats including JSON, YAML, XML, TOML, and binary representations. It features a clean, consistent interface with support for custom memory allocators and extensible serializer implementations.
