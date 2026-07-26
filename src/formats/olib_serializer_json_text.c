@@ -131,14 +131,15 @@ static bool json_write_comma_if_needed(json_ctx_t* ctx) {
   return true;
 }
 
+static bool json_write_escaped_string(json_ctx_t* ctx, const char* value);
+
 static bool json_write_key_prefix(json_ctx_t* ctx) {
   int container = json_get_container_type(ctx);
 
   if (container == 2 && ctx->pending_key) {
     // Inside struct: write "key":
-    if (!json_write_char(ctx, '"')) return false;
-    if (!json_write_str(ctx, ctx->pending_key)) return false;
-    if (!json_write_str(ctx, "\": ")) return false;
+    if (!json_write_escaped_string(ctx, ctx->pending_key)) return false;
+    if (!json_write_str(ctx, ": ")) return false;
     ctx->pending_key = NULL;
   }
   return true;
@@ -857,8 +858,10 @@ static bool json_init_read(void* ctx, const uint8_t* data, size_t size) {
 
 static bool json_finish_read(void* ctx) {
   json_ctx_t* c = (json_ctx_t*)ctx;
+  json_skip_whitespace(&c->parse);
+  bool complete = text_parse_eof(&c->parse);
   text_parse_reset(&c->parse);
-  return true;
+  return complete;
 }
 
 // #############################################################################

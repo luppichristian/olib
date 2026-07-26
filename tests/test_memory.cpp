@@ -43,7 +43,7 @@ TEST(Memory, CustomAllocators)
     EXPECT_GT(g_free_count, 0);
 
     // Reset to default allocators
-    olib_set_memory_fns(nullptr, nullptr, nullptr, nullptr);
+    olib_set_memory_fns(std::malloc, std::free, std::calloc, std::realloc);
 }
 
 TEST(Memory, CustomAllocatorsWithStruct)
@@ -70,7 +70,7 @@ TEST(Memory, CustomAllocatorsWithStruct)
     EXPECT_GT(g_free_count, 0);
 
     // Reset to default allocators
-    olib_set_memory_fns(nullptr, nullptr, nullptr, nullptr);
+    olib_set_memory_fns(std::malloc, std::free, std::calloc, std::realloc);
 }
 
 TEST(Memory, CustomAllocatorsWithList)
@@ -94,13 +94,13 @@ TEST(Memory, CustomAllocatorsWithList)
     EXPECT_GT(g_free_count, 0);
 
     // Reset to default allocators
-    olib_set_memory_fns(nullptr, nullptr, nullptr, nullptr);
+    olib_set_memory_fns(std::malloc, std::free, std::calloc, std::realloc);
 }
 
 TEST(Memory, DefaultAllocatorsWork)
 {
     // Ensure default allocators work after reset
-    olib_set_memory_fns(nullptr, nullptr, nullptr, nullptr);
+    olib_set_memory_fns(std::malloc, std::free, std::calloc, std::realloc);
 
     olib_object_t* obj = olib_object_new(OLIB_OBJECT_TYPE_STRING);
     ASSERT_NE(obj, nullptr);

@@ -161,7 +161,10 @@ static olib_object_t* olib_serializer_read_object(olib_serializer_t* serializer)
             if (!cfg->read_int(ctx, &value)) return NULL;
             obj = olib_object_new(OLIB_OBJECT_TYPE_INT);
             if (!obj) return NULL;
-            olib_object_set_int(obj, value);
+            if (!olib_object_set_int(obj, value)) {
+                olib_object_free(obj);
+                return NULL;
+            }
             return obj;
         }
 
@@ -171,7 +174,10 @@ static olib_object_t* olib_serializer_read_object(olib_serializer_t* serializer)
             if (!cfg->read_uint(ctx, &value)) return NULL;
             obj = olib_object_new(OLIB_OBJECT_TYPE_UINT);
             if (!obj) return NULL;
-            olib_object_set_uint(obj, value);
+            if (!olib_object_set_uint(obj, value)) {
+                olib_object_free(obj);
+                return NULL;
+            }
             return obj;
         }
 
@@ -181,7 +187,10 @@ static olib_object_t* olib_serializer_read_object(olib_serializer_t* serializer)
             if (!cfg->read_float(ctx, &value)) return NULL;
             obj = olib_object_new(OLIB_OBJECT_TYPE_FLOAT);
             if (!obj) return NULL;
-            olib_object_set_float(obj, value);
+            if (!olib_object_set_float(obj, value)) {
+                olib_object_free(obj);
+                return NULL;
+            }
             return obj;
         }
 
@@ -191,7 +200,10 @@ static olib_object_t* olib_serializer_read_object(olib_serializer_t* serializer)
             if (!cfg->read_string(ctx, &value)) return NULL;
             obj = olib_object_new(OLIB_OBJECT_TYPE_STRING);
             if (!obj) return NULL;
-            olib_object_set_string(obj, value);
+            if (!olib_object_set_string(obj, value)) {
+                olib_object_free(obj);
+                return NULL;
+            }
             return obj;
         }
 
@@ -201,7 +213,10 @@ static olib_object_t* olib_serializer_read_object(olib_serializer_t* serializer)
             if (!cfg->read_bool(ctx, &value)) return NULL;
             obj = olib_object_new(OLIB_OBJECT_TYPE_BOOL);
             if (!obj) return NULL;
-            olib_object_set_bool(obj, value);
+            if (!olib_object_set_bool(obj, value)) {
+                olib_object_free(obj);
+                return NULL;
+            }
             return obj;
         }
 
@@ -278,6 +293,11 @@ static olib_object_t* olib_serializer_read_object(olib_serializer_t* serializer)
 // #############################################################################
 
 OLIB_API bool olib_serializer_write(olib_serializer_t* serializer, olib_object_t* obj, uint8_t** out_data, size_t* out_size) {
+    if (!out_data || !out_size) {
+        return false;
+    }
+    *out_data = NULL;
+    *out_size = 0;
     if (!serializer || !obj) {
         return false;
     }
@@ -300,6 +320,10 @@ OLIB_API bool olib_serializer_write(olib_serializer_t* serializer, olib_object_t
 }
 
 OLIB_API bool olib_serializer_write_string(olib_serializer_t* serializer, olib_object_t* obj, char** out_string) {
+    if (!out_string) {
+        return false;
+    }
+    *out_string = NULL;
     if (!serializer || !obj) {
         return false;
     }
@@ -315,7 +339,7 @@ OLIB_API bool olib_serializer_write_string(olib_serializer_t* serializer, olib_o
     if (!olib_serializer_write_object(serializer, obj)) {
         return false;
     }
-    if (serializer->config.finish_write && out_string) {
+    if (serializer->config.finish_write) {
         size_t size;
         uint8_t* data;
         if (!serializer->config.finish_write(serializer->config.user_data, &data, &size)) {
@@ -391,7 +415,10 @@ OLIB_API olib_object_t* olib_serializer_read(olib_serializer_t* serializer, cons
     }
     olib_object_t* result = olib_serializer_read_object(serializer);
     if (serializer->config.finish_read) {
-        serializer->config.finish_read(serializer->config.user_data);
+        if (!serializer->config.finish_read(serializer->config.user_data)) {
+            olib_object_free(result);
+            return NULL;
+        }
     }
     return result;
 }
@@ -411,7 +438,10 @@ OLIB_API olib_object_t* olib_serializer_read_string(olib_serializer_t* serialize
     }
     olib_object_t* result = olib_serializer_read_object(serializer);
     if (serializer->config.finish_read) {
-        serializer->config.finish_read(serializer->config.user_data);
+        if (!serializer->config.finish_read(serializer->config.user_data)) {
+            olib_object_free(result);
+            return NULL;
+        }
     }
     return result;
 }
@@ -445,7 +475,10 @@ OLIB_API olib_object_t* olib_serializer_read_file(olib_serializer_t* serializer,
     }
     olib_object_t* result = olib_serializer_read_object(serializer);
     if (serializer->config.finish_read) {
-        serializer->config.finish_read(serializer->config.user_data);
+        if (!serializer->config.finish_read(serializer->config.user_data)) {
+            olib_object_free(result);
+            result = NULL;
+        }
     }
     olib_free(data);
     return result;

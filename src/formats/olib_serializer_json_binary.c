@@ -51,6 +51,7 @@ typedef struct {
   const uint8_t* read_buffer;
   size_t read_size;
   size_t read_pos;
+  bool read_error;
 
   // Temporary string storage for read_string/read_struct_key
   char* temp_string;
@@ -222,8 +223,9 @@ static bool jsonb_write_struct_begin(void* ctx) {
 }
 
 static bool jsonb_write_struct_key(void* ctx, const char* key) {
+  if (!key || !key[0]) return false;
   jsonb_ctx_t* c = (jsonb_ctx_t*)ctx;
-  uint32_t len = key ? (uint32_t)strlen(key) : 0;
+  uint32_t len = (uint32_t)strlen(key);
   if (!jsonb_write_u32(c, len)) return false;
   if (len > 0) {
     if (!jsonb_write_bytes(c, (const uint8_t*)key, len)) return false;
@@ -303,10 +305,11 @@ static bool jsonb_read_string(void* ctx, const char** value) {
   uint32_t len;
   if (!jsonb_read_u32(c, &len)) return false;
 
+  if (len > c->read_size - c->read_pos) return false;
+  if (memchr(c->read_buffer + c->read_pos, '\0', len)) return false;
   if (!jsonb_ensure_temp_string(c, len)) return false;
 
   if (len > 0) {
-    if (c->read_pos + len > c->read_size) return false;
     memcpy(c->temp_string, c->read_buffer + c->read_pos, len);
     c->read_pos += len;
   }
@@ -352,7 +355,10 @@ static bool jsonb_read_struct_key(void* ctx, const char** key) {
   jsonb_ctx_t* c = (jsonb_ctx_t*)ctx;
 
   uint32_t len;
-  if (!jsonb_read_u32(c, &len)) return false;
+  if (!jsonb_read_u32(c, &len)) {
+    c->read_error = true;
+    return false;
+  }
 
   // Zero-length key marks end of struct
   if (len == 0) {
@@ -361,9 +367,13 @@ static bool jsonb_read_struct_key(void* ctx, const char** key) {
     return false;
   }
 
-  if (!jsonb_ensure_temp_string(c, len)) return false;
+  if (len > c->read_size - c->read_pos ||
+      memchr(c->read_buffer + c->read_pos, '\0', len) ||
+      !jsonb_ensure_temp_string(c, len)) {
+    c->read_error = true;
+    return false;
+  }
 
-  if (c->read_pos + len > c->read_size) return false;
   memcpy(c->temp_string, c->read_buffer + c->read_pos, len);
   c->read_pos += len;
   c->temp_string[len] = '\0';
@@ -374,6 +384,7 @@ static bool jsonb_read_struct_key(void* ctx, const char** key) {
 
 static bool jsonb_read_struct_end(void* ctx) {
   jsonb_ctx_t* c = (jsonb_ctx_t*)ctx;
+  if (c->read_error) return false;
   uint32_t len;
   if (!jsonb_read_u32(c, &len)) return false;
   return (len == 0);
@@ -417,16 +428,18 @@ static bool jsonb_init_read(void* ctx, const uint8_t* data, size_t size) {
   c->read_buffer = data;
   c->read_size = size;
   c->read_pos = 0;
+  c->read_error = false;
   return true;
 }
 
 static bool jsonb_finish_read(void* ctx) {
   jsonb_ctx_t* c = (jsonb_ctx_t*)ctx;
+  bool complete = c->read_pos == c->read_size;
   // Reset read state
   c->read_buffer = NULL;
   c->read_size = 0;
   c->read_pos = 0;
-  return true;
+  return complete;
 }
 
 // #############################################################################

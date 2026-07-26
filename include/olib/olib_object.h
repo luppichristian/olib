@@ -87,9 +87,8 @@ OLIB_API bool olib_object_struct_remove(olib_object_t* obj, const char* key);
 
 // #############################################################################
 
-// Value getters - return value stored in the object
-// For string getter: returns pointer to internal null-terminated string (do not free)
-// Returns appropriate default values if object is NULL or wrong type
+// Numeric and boolean getters convert compatible scalar types; containers return defaults
+// String getter only accepts string objects and returns internal storage (do not free)
 OLIB_API int64_t olib_object_get_int(olib_object_t* obj);
 OLIB_API uint64_t olib_object_get_uint(olib_object_t* obj);
 OLIB_API double olib_object_get_float(olib_object_t* obj);

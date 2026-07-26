@@ -298,7 +298,7 @@ bool olib_object_struct_remove(olib_object_t* obj, const char* key);
 
 ## Value Getters
 
-All getters return default values (0, NULL, false) if the object is NULL or wrong type.
+Numeric and boolean getters convert compatible scalar values. String getter only accepts string objects. NULL objects and incompatible container types return default values (0, NULL, false).
 
 ### `olib_object_get_int`
 ```c

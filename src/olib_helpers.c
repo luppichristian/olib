@@ -182,7 +182,12 @@ OLIB_API bool olib_convert(
     olib_format_t src_format, const uint8_t* src_data, size_t src_size,
     olib_format_t dst_format, uint8_t** out_data, size_t* out_size)
 {
-    if (!src_data || src_size == 0 || !out_data || !out_size) {
+    if (!out_data || !out_size) {
+        return false;
+    }
+    *out_data = NULL;
+    *out_size = 0;
+    if (!src_data || src_size == 0) {
         return false;
     }
 
@@ -204,7 +209,17 @@ OLIB_API bool olib_convert(
     // Read from source format
     olib_object_t* obj = NULL;
     if (src_is_text) {
-        obj = olib_format_read_string(src_format, (const char*)src_data);
+        if (src_size == SIZE_MAX || memchr(src_data, '\0', src_size)) {
+            return false;
+        }
+        char* text = olib_malloc(src_size + 1);
+        if (!text) {
+            return false;
+        }
+        memcpy(text, src_data, src_size);
+        text[src_size] = '\0';
+        obj = olib_format_read_string(src_format, text);
+        olib_free(text);
     } else {
         obj = olib_format_read(src_format, src_data, src_size);
     }

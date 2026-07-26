@@ -84,6 +84,9 @@ OLIB_API const char* olib_object_type_to_string(olib_object_type_t type) {
 // #############################################################################
 
 OLIB_API olib_object_t* olib_object_new(olib_object_type_t type) {
+    if (type < 0 || type >= OLIB_OBJECT_TYPE_MAX) {
+        return NULL;
+    }
     olib_object_t* obj = olib_calloc(1, sizeof(olib_object_t));
     if (!obj) {
         return NULL;
@@ -160,12 +163,13 @@ OLIB_API olib_object_t* olib_object_dupe(olib_object_t* obj) {
                         return NULL;
                     }
                     memcpy(copy->data.object.entries[i].key, obj->data.object.entries[i].key, key_len + 1);
+                    copy->data.object.entries[i].value = NULL;
+                    copy->data.object.size++;
                     copy->data.object.entries[i].value = olib_object_dupe(obj->data.object.entries[i].value);
                     if (obj->data.object.entries[i].value && !copy->data.object.entries[i].value) {
                         olib_object_free(copy);
                         return NULL;
                     }
-                    copy->data.object.size++;
                 }
             }
             break;
@@ -292,6 +296,9 @@ OLIB_API bool olib_object_list_set(olib_object_t* obj, size_t index, olib_object
     }
     if (index >= obj->data.list.size) {
         return false;
+    }
+    if (obj->data.list.items[index] == value) {
+        return true;
     }
     olib_object_free(obj->data.list.items[index]);
     obj->data.list.items[index] = value;
@@ -448,6 +455,9 @@ OLIB_API bool olib_object_struct_set(olib_object_t* obj, const char* key, olib_o
     }
     olib_struct_entry_t* entry = olib_object_struct_find(obj, key);
     if (entry) {
+        if (entry->value == value) {
+            return true;
+        }
         olib_object_free(entry->value);
         entry->value = value;
         return true;
@@ -613,18 +623,19 @@ OLIB_API bool olib_object_set_string(olib_object_t* obj, const char* value) {
     if (!obj || obj->type != OLIB_OBJECT_TYPE_STRING) {
         return false;
     }
-    if (obj->data.string_val) {
-        olib_free(obj->data.string_val);
-        obj->data.string_val = NULL;
-    }
+    char* copy = NULL;
     if (value) {
         size_t len = strlen(value);
-        obj->data.string_val = olib_malloc(len + 1);
-        if (!obj->data.string_val) {
+        copy = olib_malloc(len + 1);
+        if (!copy) {
             return false;
         }
-        memcpy(obj->data.string_val, value, len + 1);
+        memcpy(copy, value, len + 1);
     }
+    if (obj->data.string_val) {
+        olib_free(obj->data.string_val);
+    }
+    obj->data.string_val = copy;
     return true;
 }
 
