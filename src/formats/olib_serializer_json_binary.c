@@ -34,7 +34,7 @@ SOFTWARE.
 #define JSONB_TAG_FLOAT  0x03  // double (8 bytes IEEE 754 little-endian)
 #define JSONB_TAG_STRING 0x04  // string (4-byte length + UTF-8 data, no null terminator)
 #define JSONB_TAG_BOOL   0x05  // bool (1 byte: 0 or 1)
-#define JSONB_TAG_LIST  0x06  // list (4-byte count + elements)
+#define JSONB_TAG_LIST   0x06  // list (4-byte count + elements)
 #define JSONB_TAG_STRUCT 0x07  // struct (key-value pairs, ends with 0-length key)
 
 // #############################################################################
@@ -135,10 +135,7 @@ static bool jsonb_read_u8(jsonb_ctx_t* ctx, uint8_t* out) {
 
 static bool jsonb_read_u32(jsonb_ctx_t* ctx, uint32_t* out) {
   if (ctx->read_pos + 4 > ctx->read_size) return false;
-  *out = (uint32_t)ctx->read_buffer[ctx->read_pos]
-       | ((uint32_t)ctx->read_buffer[ctx->read_pos + 1] << 8)
-       | ((uint32_t)ctx->read_buffer[ctx->read_pos + 2] << 16)
-       | ((uint32_t)ctx->read_buffer[ctx->read_pos + 3] << 24);
+  *out = (uint32_t)ctx->read_buffer[ctx->read_pos] | ((uint32_t)ctx->read_buffer[ctx->read_pos + 1] << 8) | ((uint32_t)ctx->read_buffer[ctx->read_pos + 2] << 16) | ((uint32_t)ctx->read_buffer[ctx->read_pos + 3] << 24);
   ctx->read_pos += 4;
   return true;
 }
@@ -256,7 +253,7 @@ static olib_object_type_t jsonb_read_peek(void* ctx) {
     case JSONB_TAG_FLOAT:  return OLIB_OBJECT_TYPE_FLOAT;
     case JSONB_TAG_STRING: return OLIB_OBJECT_TYPE_STRING;
     case JSONB_TAG_BOOL:   return OLIB_OBJECT_TYPE_BOOL;
-    case JSONB_TAG_LIST:  return OLIB_OBJECT_TYPE_LIST;
+    case JSONB_TAG_LIST:   return OLIB_OBJECT_TYPE_LIST;
     case JSONB_TAG_STRUCT: return OLIB_OBJECT_TYPE_STRUCT;
     default:               return OLIB_OBJECT_TYPE_MAX;
   }
@@ -453,36 +450,36 @@ OLIB_API olib_serializer_t* olib_serializer_new_json_binary() {
   }
 
   olib_serializer_config_t config = {
-    .user_data = ctx,
-    .text_based = false,
-    .free_ctx = jsonb_free_ctx,
-    .init_write = jsonb_init_write,
-    .finish_write = jsonb_finish_write,
-    .init_read = jsonb_init_read,
-    .finish_read = jsonb_finish_read,
+      .user_data = ctx,
+      .text_based = false,
+      .free_ctx = jsonb_free_ctx,
+      .init_write = jsonb_init_write,
+      .finish_write = jsonb_finish_write,
+      .init_read = jsonb_init_read,
+      .finish_read = jsonb_finish_read,
 
-    .write_int = jsonb_write_int,
-    .write_uint = jsonb_write_uint,
-    .write_float = jsonb_write_float,
-    .write_string = jsonb_write_string,
-    .write_bool = jsonb_write_bool,
-    .write_list_begin = jsonb_write_list_begin,
-    .write_list_end = jsonb_write_list_end,
-    .write_struct_begin = jsonb_write_struct_begin,
-    .write_struct_key = jsonb_write_struct_key,
-    .write_struct_end = jsonb_write_struct_end,
+      .write_int = jsonb_write_int,
+      .write_uint = jsonb_write_uint,
+      .write_float = jsonb_write_float,
+      .write_string = jsonb_write_string,
+      .write_bool = jsonb_write_bool,
+      .write_list_begin = jsonb_write_list_begin,
+      .write_list_end = jsonb_write_list_end,
+      .write_struct_begin = jsonb_write_struct_begin,
+      .write_struct_key = jsonb_write_struct_key,
+      .write_struct_end = jsonb_write_struct_end,
 
-    .read_peek = jsonb_read_peek,
-    .read_int = jsonb_read_int,
-    .read_uint = jsonb_read_uint,
-    .read_float = jsonb_read_float,
-    .read_string = jsonb_read_string,
-    .read_bool = jsonb_read_bool,
-    .read_list_begin = jsonb_read_list_begin,
-    .read_list_end = jsonb_read_list_end,
-    .read_struct_begin = jsonb_read_struct_begin,
-    .read_struct_key = jsonb_read_struct_key,
-    .read_struct_end = jsonb_read_struct_end,
+      .read_peek = jsonb_read_peek,
+      .read_int = jsonb_read_int,
+      .read_uint = jsonb_read_uint,
+      .read_float = jsonb_read_float,
+      .read_string = jsonb_read_string,
+      .read_bool = jsonb_read_bool,
+      .read_list_begin = jsonb_read_list_begin,
+      .read_list_end = jsonb_read_list_end,
+      .read_struct_begin = jsonb_read_struct_begin,
+      .read_struct_key = jsonb_read_struct_key,
+      .read_struct_end = jsonb_read_struct_end,
   };
 
   olib_serializer_t* serializer = olib_serializer_new(&config);

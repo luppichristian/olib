@@ -1,3 +1,26 @@
+/*
+MIT License
+
+Copyright (c) 2026 Christian Luppi
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+*/
 #include <gtest/gtest.h>
 #include <olib.h>
 #include <cstdlib>
@@ -5,108 +28,100 @@
 static int g_malloc_count = 0;
 static int g_free_count = 0;
 
-static void* test_malloc(size_t size)
-{
-    g_malloc_count++;
-    return malloc(size);
+static void* test_malloc(size_t size) {
+  g_malloc_count++;
+  return malloc(size);
 }
 
-static void test_free(void* ptr)
-{
-    if (ptr) g_free_count++;
-    free(ptr);
+static void test_free(void* ptr) {
+  if (ptr) g_free_count++;
+  free(ptr);
 }
 
-static void* test_calloc(size_t num, size_t size)
-{
-    g_malloc_count++;
-    return calloc(num, size);
+static void* test_calloc(size_t num, size_t size) {
+  g_malloc_count++;
+  return calloc(num, size);
 }
 
-static void* test_realloc(void* ptr, size_t new_size)
-{
-    return realloc(ptr, new_size);
+static void* test_realloc(void* ptr, size_t new_size) {
+  return realloc(ptr, new_size);
 }
 
-TEST(Memory, CustomAllocators)
-{
-    g_malloc_count = 0;
-    g_free_count = 0;
+TEST(Memory, CustomAllocators) {
+  g_malloc_count = 0;
+  g_free_count = 0;
 
-    olib_set_memory_fns(test_malloc, test_free, test_calloc, test_realloc);
+  olib_set_memory_fns(test_malloc, test_free, test_calloc, test_realloc);
 
-    olib_object_t* obj = olib_object_new(OLIB_OBJECT_TYPE_INT);
-    olib_object_set_int(obj, 42);
-    EXPECT_GT(g_malloc_count, 0);
+  olib_object_t* obj = olib_object_new(OLIB_OBJECT_TYPE_INT);
+  olib_object_set_int(obj, 42);
+  EXPECT_GT(g_malloc_count, 0);
 
-    olib_object_free(obj);
-    EXPECT_GT(g_free_count, 0);
+  olib_object_free(obj);
+  EXPECT_GT(g_free_count, 0);
 
-    // Reset to default allocators
-    olib_set_memory_fns(std::malloc, std::free, std::calloc, std::realloc);
+  // Reset to default allocators
+  olib_set_memory_fns(std::malloc, std::free, std::calloc, std::realloc);
 }
 
-TEST(Memory, CustomAllocatorsWithStruct)
-{
-    g_malloc_count = 0;
-    g_free_count = 0;
+TEST(Memory, CustomAllocatorsWithStruct) {
+  g_malloc_count = 0;
+  g_free_count = 0;
 
-    olib_set_memory_fns(test_malloc, test_free, test_calloc, test_realloc);
+  olib_set_memory_fns(test_malloc, test_free, test_calloc, test_realloc);
 
-    olib_object_t* obj = olib_object_new(OLIB_OBJECT_TYPE_STRUCT);
+  olib_object_t* obj = olib_object_new(OLIB_OBJECT_TYPE_STRUCT);
 
-    olib_object_t* val1 = olib_object_new(OLIB_OBJECT_TYPE_INT);
-    olib_object_set_int(val1, 42);
-    olib_object_struct_add(obj, "key1", val1);
+  olib_object_t* val1 = olib_object_new(OLIB_OBJECT_TYPE_INT);
+  olib_object_set_int(val1, 42);
+  olib_object_struct_add(obj, "key1", val1);
 
-    olib_object_t* val2 = olib_object_new(OLIB_OBJECT_TYPE_STRING);
-    olib_object_set_string(val2, "test string");
-    olib_object_struct_add(obj, "key2", val2);
+  olib_object_t* val2 = olib_object_new(OLIB_OBJECT_TYPE_STRING);
+  olib_object_set_string(val2, "test string");
+  olib_object_struct_add(obj, "key2", val2);
 
-    int malloc_count_before_free = g_malloc_count;
-    EXPECT_GT(malloc_count_before_free, 2);  // At least struct + 2 values
+  int malloc_count_before_free = g_malloc_count;
+  EXPECT_GT(malloc_count_before_free, 2);  // At least struct + 2 values
 
-    olib_object_free(obj);
-    EXPECT_GT(g_free_count, 0);
+  olib_object_free(obj);
+  EXPECT_GT(g_free_count, 0);
 
-    // Reset to default allocators
-    olib_set_memory_fns(std::malloc, std::free, std::calloc, std::realloc);
+  // Reset to default allocators
+  olib_set_memory_fns(std::malloc, std::free, std::calloc, std::realloc);
 }
 
-TEST(Memory, CustomAllocatorsWithList)
-{
-    g_malloc_count = 0;
-    g_free_count = 0;
+TEST(Memory, CustomAllocatorsWithList) {
+  g_malloc_count = 0;
+  g_free_count = 0;
 
-    olib_set_memory_fns(test_malloc, test_free, test_calloc, test_realloc);
+  olib_set_memory_fns(test_malloc, test_free, test_calloc, test_realloc);
 
-    olib_object_t* arr = olib_object_new(OLIB_OBJECT_TYPE_LIST);
+  olib_object_t* arr = olib_object_new(OLIB_OBJECT_TYPE_LIST);
 
-    for (int i = 0; i < 5; i++) {
-        olib_object_t* val = olib_object_new(OLIB_OBJECT_TYPE_INT);
-        olib_object_set_int(val, i);
-        olib_object_list_push(arr, val);
-    }
+  for (int i = 0; i < 5; i++) {
+    olib_object_t* val = olib_object_new(OLIB_OBJECT_TYPE_INT);
+    olib_object_set_int(val, i);
+    olib_object_list_push(arr, val);
+  }
 
-    EXPECT_GT(g_malloc_count, 5);  // At least list + 5 values
+  EXPECT_GT(g_malloc_count, 5);  // At least list + 5 values
 
-    olib_object_free(arr);
-    EXPECT_GT(g_free_count, 0);
+  olib_object_free(arr);
+  EXPECT_GT(g_free_count, 0);
 
-    // Reset to default allocators
-    olib_set_memory_fns(std::malloc, std::free, std::calloc, std::realloc);
+  // Reset to default allocators
+  olib_set_memory_fns(std::malloc, std::free, std::calloc, std::realloc);
 }
 
-TEST(Memory, DefaultAllocatorsWork)
-{
-    // Ensure default allocators work after reset
-    olib_set_memory_fns(std::malloc, std::free, std::calloc, std::realloc);
+TEST(Memory, DefaultAllocatorsWork) {
+  // Ensure default allocators work after reset
+  olib_set_memory_fns(std::malloc, std::free, std::calloc, std::realloc);
 
-    olib_object_t* obj = olib_object_new(OLIB_OBJECT_TYPE_STRING);
-    ASSERT_NE(obj, nullptr);
+  olib_object_t* obj = olib_object_new(OLIB_OBJECT_TYPE_STRING);
+  ASSERT_NE(obj, nullptr);
 
-    EXPECT_TRUE(olib_object_set_string(obj, "Test with default allocators"));
-    EXPECT_STREQ(olib_object_get_string(obj), "Test with default allocators");
+  EXPECT_TRUE(olib_object_set_string(obj, "Test with default allocators"));
+  EXPECT_STREQ(olib_object_get_string(obj), "Test with default allocators");
 
-    olib_object_free(obj);
+  olib_object_free(obj);
 }
