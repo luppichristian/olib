@@ -23,13 +23,22 @@ SOFTWARE.
 */
 
 #include <olib.h>
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#ifdef _WIN32
-#  define strcasecmp _stricmp
-#endif
+static int compare_case_insensitive(const char* left, const char* right) {
+  while (*left && *right) {
+    int difference = tolower((unsigned char)*left) - tolower((unsigned char)*right);
+    if (difference != 0) {
+      return difference;
+    }
+    ++left;
+    ++right;
+  }
+  return tolower((unsigned char)*left) - tolower((unsigned char)*right);
+}
 
 static const char* format_names[] = {
     "json",
@@ -77,19 +86,19 @@ static void print_version(void) {
 }
 
 static olib_format_t parse_format(const char* format_str) {
-  if (strcasecmp(format_str, "json") == 0 || strcasecmp(format_str, "json-text") == 0) {
+  if (compare_case_insensitive(format_str, "json") == 0 || compare_case_insensitive(format_str, "json-text") == 0) {
     return OLIB_FORMAT_JSON_TEXT;
-  } else if (strcasecmp(format_str, "json-binary") == 0 || strcasecmp(format_str, "jsonb") == 0) {
+  } else if (compare_case_insensitive(format_str, "json-binary") == 0 || compare_case_insensitive(format_str, "jsonb") == 0) {
     return OLIB_FORMAT_JSON_BINARY;
-  } else if (strcasecmp(format_str, "yaml") == 0 || strcasecmp(format_str, "yml") == 0) {
+  } else if (compare_case_insensitive(format_str, "yaml") == 0 || compare_case_insensitive(format_str, "yml") == 0) {
     return OLIB_FORMAT_YAML;
-  } else if (strcasecmp(format_str, "xml") == 0) {
+  } else if (compare_case_insensitive(format_str, "xml") == 0) {
     return OLIB_FORMAT_XML;
-  } else if (strcasecmp(format_str, "toml") == 0) {
+  } else if (compare_case_insensitive(format_str, "toml") == 0) {
     return OLIB_FORMAT_TOML;
-  } else if (strcasecmp(format_str, "txt") == 0 || strcasecmp(format_str, "text") == 0) {
+  } else if (compare_case_insensitive(format_str, "txt") == 0 || compare_case_insensitive(format_str, "text") == 0) {
     return OLIB_FORMAT_TXT;
-  } else if (strcasecmp(format_str, "binary") == 0 || strcasecmp(format_str, "bin") == 0) {
+  } else if (compare_case_insensitive(format_str, "binary") == 0 || compare_case_insensitive(format_str, "bin") == 0) {
     return OLIB_FORMAT_BINARY;
   }
   return (olib_format_t)-1;
@@ -101,17 +110,17 @@ static olib_format_t detect_format_from_extension(const char* filename) {
     return (olib_format_t)-1;
   }
 
-  if (strcasecmp(dot, ".json") == 0) {
+  if (compare_case_insensitive(dot, ".json") == 0) {
     return OLIB_FORMAT_JSON_TEXT;
-  } else if (strcasecmp(dot, ".jsonb") == 0) {
+  } else if (compare_case_insensitive(dot, ".jsonb") == 0) {
     return OLIB_FORMAT_JSON_BINARY;
-  } else if (strcasecmp(dot, ".yaml") == 0 || strcasecmp(dot, ".yml") == 0) {
+  } else if (compare_case_insensitive(dot, ".yaml") == 0 || compare_case_insensitive(dot, ".yml") == 0) {
     return OLIB_FORMAT_YAML;
-  } else if (strcasecmp(dot, ".xml") == 0) {
+  } else if (compare_case_insensitive(dot, ".xml") == 0) {
     return OLIB_FORMAT_XML;
-  } else if (strcasecmp(dot, ".toml") == 0) {
+  } else if (compare_case_insensitive(dot, ".toml") == 0) {
     return OLIB_FORMAT_TOML;
-  } else if (strcasecmp(dot, ".txt") == 0) {
+  } else if (compare_case_insensitive(dot, ".txt") == 0) {
     return OLIB_FORMAT_TXT;
   } else {
     return OLIB_FORMAT_BINARY;
