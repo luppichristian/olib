@@ -45,6 +45,8 @@ typedef enum olib_format_t {
   OLIB_FORMAT_MAX,
 } olib_format_t;
 
+// Thread safety: each factory can run concurrently with the others, subject
+// to the allocator contract in olib_base.h. Each returns a separate instance.
 OLIB_API olib_serializer_t* olib_serializer_new_json_text();
 OLIB_API olib_serializer_t* olib_serializer_new_json_binary();
 OLIB_API olib_serializer_t* olib_serializer_new_yaml();

@@ -30,7 +30,15 @@ SOFTWARE.
 OLIB_HEADER_BEGIN;
 // #############################################################################
 
+// Thread safety: these helpers create independent serializer instances and may
+// run concurrently, subject to the allocator contract in olib_base.h. Keep
+// input buffers and object trees stable while read, and synchronize output
+// storage. Coordinate complete operations on shared FILEs or underlying files,
+// including aliases and paths. Text formats use the C locale; coordinate with
+// changes to the process locale.
+
 // Get a new serializer for a given format (caller must free with olib_serializer_free)
+// Thread safety: concurrent calls are safe under the allocator contract.
 OLIB_API olib_serializer_t* olib_format_serializer(olib_format_t format);
 
 // #############################################################################
@@ -38,17 +46,21 @@ OLIB_API olib_serializer_t* olib_format_serializer(olib_format_t format);
 // #############################################################################
 
 // Write object to memory buffer (caller must free out_data with olib_free)
+// Thread safety: keep the object stable and synchronize output storage.
 OLIB_API bool olib_format_write(olib_format_t format, olib_object_t* obj, uint8_t** out_data, size_t* out_size);
 
 // Write object to null-terminated string (caller must free out_string with olib_free)
 // Only use with text-based formats (JSON_TEXT, YAML, XML, TOML, TXT)
 // For binary formats, use olib_format_write() instead
+// Thread safety: keep the object stable and synchronize output storage.
 OLIB_API bool olib_format_write_string(olib_format_t format, olib_object_t* obj, char** out_string);
 
 // Write object to FILE*
+// Thread safety: keep the object stable and coordinate stream access.
 OLIB_API bool olib_format_write_file(olib_format_t format, olib_object_t* obj, FILE* file);
 
 // Write object to file path
+// Thread safety: keep the object stable and coordinate file access.
 OLIB_API bool olib_format_write_file_path(olib_format_t format, olib_object_t* obj, const char* file_path);
 
 // #############################################################################
@@ -56,17 +68,21 @@ OLIB_API bool olib_format_write_file_path(olib_format_t format, olib_object_t* o
 // #############################################################################
 
 // Read object from memory buffer (caller must free returned object with olib_object_free)
+// Thread safety: keep input data stable throughout the call.
 OLIB_API olib_object_t* olib_format_read(olib_format_t format, const uint8_t* data, size_t size);
 
 // Read object from null-terminated string (caller must free returned object with olib_object_free)
 // Only use with text-based formats (JSON_TEXT, YAML, XML, TOML, TXT)
 // For binary formats, use olib_format_read() instead
+// Thread safety: keep input data stable throughout the call.
 OLIB_API olib_object_t* olib_format_read_string(olib_format_t format, const char* string);
 
 // Read object from FILE* (caller must free returned object with olib_object_free)
+// Thread safety: coordinate stream access for the entire operation.
 OLIB_API olib_object_t* olib_format_read_file(olib_format_t format, FILE* file);
 
 // Read object from file path (caller must free returned object with olib_object_free)
+// Thread safety: coordinate access to the underlying file.
 OLIB_API olib_object_t* olib_format_read_file_path(olib_format_t format, const char* file_path);
 
 // #############################################################################
@@ -74,6 +90,7 @@ OLIB_API olib_object_t* olib_format_read_file_path(olib_format_t format, const c
 // #############################################################################
 
 // Convert memory buffer from one format to another (caller must free out_data with olib_free)
+// Thread safety: keep input data stable and synchronize output storage.
 OLIB_API bool olib_convert(
     olib_format_t src_format,
     const uint8_t* src_data,
@@ -86,6 +103,7 @@ OLIB_API bool olib_convert(
 // Both src_format and dst_format must be text-based (JSON_TEXT, YAML, XML, TOML, TXT)
 // For binary source data, use olib_convert() which accepts size parameter
 // For binary destination, use olib_convert() which provides size in output
+// Thread safety: keep input data stable and synchronize output storage.
 OLIB_API bool olib_convert_string(
     olib_format_t src_format,
     const char* src_string,
@@ -93,6 +111,7 @@ OLIB_API bool olib_convert_string(
     char** out_string);
 
 // Convert file from one format to another
+// Thread safety: coordinate access to both streams for the entire operation.
 OLIB_API bool olib_convert_file(
     olib_format_t src_format,
     FILE* src_file,
@@ -100,6 +119,7 @@ OLIB_API bool olib_convert_file(
     FILE* dst_file);
 
 // Convert file path from one format to another
+// Thread safety: coordinate access to both underlying files.
 OLIB_API bool olib_convert_file_path(
     olib_format_t src_format,
     const char* src_path,

@@ -30,6 +30,8 @@ SOFTWARE.
 #include <string>
 
 // Helper function to create a test object with various types
+// Thread safety: Concurrent calls are safe if the configured allocator supports
+// them and is not changed concurrently. Each call returns a separate object.
 inline olib_object_t* create_test_object() {
   olib_object_t* root = olib_object_new(OLIB_OBJECT_TYPE_STRUCT);
 
@@ -70,6 +72,9 @@ inline olib_object_t* create_test_object() {
   return root;
 }
 
+// Thread safety: The object tree must not be modified or freed during this
+// call. Concurrent assertions are also subject to Google Test's guarantees on
+// the platform in use.
 inline void verify_test_object(olib_object_t* obj) {
   ASSERT_NE(obj, nullptr);
   EXPECT_EQ(olib_object_get_type(obj), OLIB_OBJECT_TYPE_STRUCT);

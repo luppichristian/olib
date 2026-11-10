@@ -30,6 +30,16 @@ SOFTWARE.
 OLIB_HEADER_BEGIN;
 // #############################################################################
 
+// Thread safety: allocation and deallocation follow the allocator contract in
+// olib_base.h. Serializer instances have no internal synchronization: serialize
+// read/write operations on a shared instance, and synchronize destruction with
+// all access. Distinct instances can
+// be used concurrently only if their callbacks and any shared user_data are
+// safe for that use. Keep input buffers and object trees stable while read and
+// synchronize output storage. Coordinate complete file operations on a shared
+// FILE or underlying file, including aliases and paths. Text formats use the C
+// locale; coordinate with changes to the process locale.
+
 typedef struct olib_serializer_t olib_serializer_t;
 
 typedef struct olib_serializer_config_t {
@@ -74,38 +84,49 @@ typedef struct olib_serializer_config_t {
 } olib_serializer_config_t;
 
 // Serializer management
+// Thread safety: config and callback state must remain safe to read or use during the call.
 OLIB_API olib_serializer_t* olib_serializer_new(olib_serializer_config_t* config);
+// Thread safety: requires exclusive access to the instance and its callback state.
 OLIB_API void olib_serializer_free(olib_serializer_t* serializer);
 
 // Check if a serializer is configured as text-based
+// Thread safety: safe alongside other operations while the instance remains alive.
 OLIB_API bool olib_serializer_is_text_based(olib_serializer_t* serializer);
 
 // #############################################################################
 
 // Writing objects
 // olib_serializer_write: For binary serializers only (returns false if serializer is text-based)
+// Thread safety: serialize use of the instance; keep the object stable and synchronize outputs.
 OLIB_API bool olib_serializer_write(olib_serializer_t* serializer, olib_object_t* obj, uint8_t** out_data, size_t* out_size);
 
 // olib_serializer_write_string: For text-based serializers only (returns false if serializer is binary)
+// Thread safety: serialize use of the instance; keep the object stable and synchronize outputs.
 OLIB_API bool olib_serializer_write_string(olib_serializer_t* serializer, olib_object_t* obj, char** out_string);
 
 // olib_serializer_write_file: Works with both text and binary serializers (opens file in appropriate mode)
+// Thread safety: serialize use of the instance; keep the object stable and coordinate stream access.
 OLIB_API bool olib_serializer_write_file(olib_serializer_t* serializer, olib_object_t* obj, FILE* file);
 
 // olib_serializer_write_file_path: Works with both text and binary serializers (opens file in appropriate mode)
+// Thread safety: serialize use of the instance; keep the object stable and coordinate file access.
 OLIB_API bool olib_serializer_write_file_path(olib_serializer_t* serializer, olib_object_t* obj, const char* file_path);
 
 // Reading objects
 // olib_serializer_read: For binary serializers only (returns NULL if serializer is text-based)
+// Thread safety: serialize use of the instance and keep input data stable.
 OLIB_API olib_object_t* olib_serializer_read(olib_serializer_t* serializer, const uint8_t* data, size_t size);
 
 // olib_serializer_read_string: For text-based serializers only (returns NULL if serializer is binary)
+// Thread safety: serialize use of the instance and keep input data stable.
 OLIB_API olib_object_t* olib_serializer_read_string(olib_serializer_t* serializer, const char* string);
 
 // olib_serializer_read_file: Works with both text and binary serializers (reads file in appropriate mode)
+// Thread safety: serialize use of the instance and coordinate stream access.
 OLIB_API olib_object_t* olib_serializer_read_file(olib_serializer_t* serializer, FILE* file);
 
 // olib_serializer_read_file_path: Works with both text and binary serializers (opens file in appropriate mode)
+// Thread safety: serialize use of the instance and coordinate file access.
 OLIB_API olib_object_t* olib_serializer_read_file_path(olib_serializer_t* serializer, const char* file_path);
 
 // #############################################################################

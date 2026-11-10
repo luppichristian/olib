@@ -71,6 +71,10 @@ OLIB_HEADER_BEGIN;
 // #############################################################################
 
 // Memory functions called within the library, they can be overriden by the user.
+// Thread safety: all library operations that allocate or free depend on these
+// callbacks being thread-safe. Configure them before concurrent library use;
+// do not change them while allocations made by the previous callbacks remain
+// live. Callers must synchronize conflicting access to the same allocation.
 OLIB_API void* olib_malloc(size_t size);
 OLIB_API void olib_free(void* ptr);
 OLIB_API void* olib_calloc(size_t num, size_t size);
@@ -83,7 +87,8 @@ typedef void* (*olib_calloc_fn)(size_t num, size_t size);
 typedef void* (*olib_realloc_fn)(void* ptr, size_t new_size);
 
 // Set custom memory functions to be used by the library.
-// Not thread safe, should be called only once at the start of the program.
+// Thread safety: not thread-safe. Call once at startup, before any concurrent
+// library use or allocation that must later be freed.
 OLIB_API void olib_set_memory_fns(
     olib_malloc_fn malloc_fn,
     olib_free_fn free_fn,

@@ -29,6 +29,17 @@ SOFTWARE.
 #include <stdbool.h>
 #include <stdint.h>
 
+// Thread safety for every function in this header:
+// Functions taking a context can run concurrently on separate contexts if their
+// input buffers and other shared inputs are not modified, output storage is not
+// shared, and the configured allocator supports concurrent calls. Synchronize
+// access to a context, including use of pointers into its temp_string, against
+// any operation that changes or frees it. text_parse_peek_raw, text_parse_eof,
+// text_parse_line_number, and text_parse_column_number only read the context
+// and may run concurrently with other readers. The two identifier predicates
+// have no shared state. Do not change the allocator while parsing; number
+// parsing also depends on the C locale, which must not be changed concurrently.
+
 // #############################################################################
 // Text parsing context
 // #############################################################################

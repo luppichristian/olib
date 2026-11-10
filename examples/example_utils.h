@@ -10,6 +10,8 @@
 #include <string.h>
 
 // Read entire file into memory
+// Thread safety: Concurrent calls use separate streams and buffers. Coordinate
+// with writers to the same file; diagnostics to stderr may interleave.
 static char* read_file(const char* filename) {
   FILE* file = fopen(filename, "rb");
   if (!file) {
@@ -36,6 +38,8 @@ static char* read_file(const char* filename) {
 }
 
 // Print object recursively with indentation
+// Thread safety: The object tree must not be modified or freed during the call.
+// Synchronize access to stdout if output from concurrent calls must not interleave.
 static void print_object(olib_object_t* obj, int indent) {
   if (!obj) {
     printf("(null)");
