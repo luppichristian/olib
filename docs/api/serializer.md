@@ -1,7 +1,3 @@
----
-title: Serializer Module
----
-
 # Serializer Module
 
 The serializer module (`olib/olib_serializer.h`) defines the serializer interface for converting objects to/from various formats.

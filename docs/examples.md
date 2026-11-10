@@ -1,7 +1,3 @@
----
-title: Examples
----
-
 # Examples
 
 The `examples/` directory contains complete working examples demonstrating various olib features.

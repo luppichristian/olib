@@ -2,122 +2,146 @@
 
 [![Release](https://img.shields.io/github/v/release/luppichristian/olib)](https://github.com/luppichristian/olib/releases)
 [![Language](https://img.shields.io/badge/language-C11-555555)](https://github.com/luppichristian/olib)
-[![Docs](https://img.shields.io/badge/docs-online-blue)](https://luppichristian.github.io/olib/)
 [![CI](https://img.shields.io/github/actions/workflow/status/luppichristian/olib/ci.yml?branch=main&label=ci)](https://github.com/luppichristian/olib/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-A lightweight C library for object serialization and format conversion.
+olib is a C library for building structured data, serializing it, and converting between formats. It provides an object tree, built-in serializers, and the `olib-convert` command-line tool.
 
-olib provides a unified API for working with structured data objects and serializing them to multiple formats including JSON, YAML, XML, TOML, and binary representations. It features a clean, consistent interface with support for custom memory allocators and extensible serializer implementations.
+Objects can contain structs, lists, signed and unsigned integers, floating-point numbers, strings, and booleans. The library includes serializers for JSON, YAML, XML, TOML, a simple key-value text format, binary JSON, and a compact binary format. You can supply custom allocators and serializers; the public API also supports C++ callers.
 
-## Features
+Formats have different representations and limitations, so conversion is not necessarily lossless. In particular, the object model has no null type, and the plain text format has limited support for nested structures.
 
-- **Unified Object Model**: Work with structs, lists, and primitive types (int, uint, float, string, bool) through a consistent API
-- **Multi-Format Support**: Built-in serializers for JSON (text/binary), YAML, XML, TOML, TXT, and compact binary formats
-- **Format Conversion**: Convert between any supported formats with a single function call
-- **Custom Memory Management**: Override memory allocation functions for embedded systems or custom allocators
-- **Extensible Serializers**: Implement custom serializers by providing callback functions
-- **C/C++ Compatible**: Clean C11 API with proper C++ linkage support
+## Build
 
-## Requirements
+You need CMake 3.19 or later and C and C++ compilers. The library uses C11; the tests use C++20 and GoogleTest. By default CMake fetches GoogleTest when tests are enabled.
 
-- CMake 3.19+
-- C11 compiler (GCC, Clang, MSVC)
-- GoogleTest (optional, for tests - auto-fetched by default)
-
-### Build Options
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `OLIB_BUILD_SHARED` | `OFF` | Build as shared library |
-| `OLIB_BUILD_TESTS` | `ON` | Build test suite |
-| `OLIB_BUILD_EXAMPLES` | `ON` | Build example programs |
-| `OLIB_GTEST_FETCH` | `ON` | Auto-fetch GoogleTest if not found |
-
-## Documentation
-
-See [docs](https://luppichristian.github.io/olib/) for comprehensive API documentation and usage patterns.
-
-## Usage
-
-### Basic Object Manipulation
-
-```c
-#include <olib.h>
-
-int main(void) {
-    // Create a struct object
-    olib_object_t* person = olib_object_new(OLIB_OBJECT_TYPE_STRUCT);
-
-    // Add a string field
-    olib_object_t* name = olib_object_new(OLIB_OBJECT_TYPE_STRING);
-    olib_object_set_string(name, "Alice");
-    olib_object_struct_set(person, "name", name);
-
-    // Add an integer field
-    olib_object_t* age = olib_object_new(OLIB_OBJECT_TYPE_INT);
-    olib_object_set_int(age, 30);
-    olib_object_struct_set(person, "age", age);
-
-    // Access values
-    printf("Name: %s\n", olib_object_get_string(olib_object_struct_get(person, "name")));
-    printf("Age: %lld\n", (long long)olib_object_get_int(olib_object_struct_get(person, "age")));
-
-    // Cleanup
-    olib_object_free(person);
-    return 0;
-}
+```sh
+git clone https://github.com/luppichristian/olib.git
+cd olib
+cmake -S . -B build
+cmake --build build --config Release
+ctest --test-dir build -C Release --output-on-failure
 ```
 
-### Serialization
+CMake builds a static library, examples, tests, and the converter by default. To build without fetching GoogleTest, disable tests with `-DOLIB_BUILD_TESTS=OFF`, or set `-DOLIB_GTEST_FETCH=OFF` to use an installed GoogleTest package.
 
-```c
-#include <olib.h>
+| CMake option | Default | Purpose |
+| --- | --- | --- |
+| `OLIB_BUILD_SHARED` | `OFF` | Build a shared library instead of a static library. |
+| `OLIB_BUILD_TESTS` | `ON` | Build the test suite. |
+| `OLIB_BUILD_EXAMPLES` | `ON` | Build the example programs. |
+| `OLIB_BUILD_CLI` | `ON` | Build `olib-convert`. |
+| `OLIB_GTEST_FETCH` | `ON` | Fetch GoogleTest when tests are enabled. |
 
-int main(void) {
-    // Create an object
-    olib_object_t* obj = olib_object_new(OLIB_OBJECT_TYPE_STRUCT);
-    // ... populate object ...
+To use the source tree in another CMake project, add it as a subdirectory and link the target. This example uses the default static build:
 
-    // Serialize to JSON string
-    char* json = NULL;
-    olib_format_write_string(OLIB_FORMAT_JSON_TEXT, obj, &json);
-    printf("%s\n", json);
-    olib_free(json);
-
-    // Or write directly to file
-    olib_format_write_file_path(OLIB_FORMAT_JSON_TEXT, obj, "output.json");
-
-    olib_object_free(obj);
-    return 0;
-}
+```cmake
+set(OLIB_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+add_subdirectory(path/to/olib)
+target_link_libraries(your_target PRIVATE olib::static)
 ```
 
-### Format Conversion
+## Library usage
+
+The snippets below use `#include <olib.h>` and, where they print output, `#include <stdio.h>`. They omit error checks to keep the main operations visible: check object pointers and boolean return values in your own code.
+
+### Create and serialize an object
 
 ```c
-#include <olib.h>
+olib_object_t* person = olib_object_new(OLIB_OBJECT_TYPE_STRUCT);
+olib_object_t* name = olib_object_new(OLIB_OBJECT_TYPE_STRING);
+olib_object_set_string(name, "Alice");
+olib_object_struct_set(person, "name", name);
 
-int main(void) {
-    // Convert JSON file to YAML
-    olib_convert_file_path(
-        OLIB_FORMAT_JSON_TEXT, "input.json",
-        OLIB_FORMAT_YAML, "output.yaml"
-    );
+char* json = NULL;
+olib_format_write_string(OLIB_FORMAT_JSON_TEXT, person, &json);
+puts(json);
 
-    // Convert string between formats
-    const char* json = "{\"key\": \"value\"}";
-    char* yaml = NULL;
-    olib_convert_string(OLIB_FORMAT_JSON_TEXT, json, OLIB_FORMAT_YAML, &yaml);
-    printf("%s\n", yaml);
-    olib_free(yaml);
-
-    return 0;
-}
+olib_free(json);
+olib_object_free(person);
 ```
+
+A successful insertion transfers ownership of `name` to `person`. Freeing the parent frees its children; if insertion fails, the caller still owns the child. Free serialized output with `olib_free()`.
+
+### Read an object and write a file
+
+```c
+const char* json = "{\"name\": \"Alice\", \"age\": 30}";
+olib_object_t* person = olib_format_read_string(OLIB_FORMAT_JSON_TEXT, json);
+
+olib_object_t* name = olib_object_struct_get(person, "name");
+printf("Name: %s\n", olib_object_get_string(name));
+
+olib_format_write_file_path(OLIB_FORMAT_YAML, person, "person.yaml");
+olib_object_free(person);
+```
+
+The child returned by `olib_object_struct_get()` belongs to its parent. `olib_object_get_string()` returns a borrowed pointer that remains valid until the object is modified or freed. Check that a field exists and has the expected type before using it.
+
+### Convert a string
+
+```c
+const char* json = "{\"name\": \"Alice\", \"age\": 30}";
+char* yaml = NULL;
+
+olib_convert_string(OLIB_FORMAT_JSON_TEXT, json, OLIB_FORMAT_YAML, &yaml);
+puts(yaml);
+olib_free(yaml);
+```
+
+### Convert a file
+
+```c
+bool converted = olib_convert_file_path(
+    OLIB_FORMAT_JSON_TEXT, "samples/example1.json",
+    OLIB_FORMAT_XML, "output.xml"
+);
+```
+
+Run this example from the repository root to use the sample file. The return value indicates whether conversion succeeded.
+
+### Work with binary data
+
+String helpers use text formats. For binary formats, use a buffer and its size:
+
+```c
+olib_object_t* original = olib_format_read_string(OLIB_FORMAT_JSON_TEXT, "{\"value\": 42}");
+uint8_t* data = NULL;
+size_t size = 0;
+
+olib_format_write(OLIB_FORMAT_BINARY, original, &data, &size);
+olib_object_t* copy = olib_format_read(OLIB_FORMAT_BINARY, data, size);
+
+olib_object_free(copy);
+olib_free(data);
+olib_object_free(original);
+```
+
+For conversion involving binary formats, `olib_convert()` accepts buffers and sizes.
+
+The [examples](examples/) directory contains complete programs for each built-in format. See the [documentation](docs/index.md) for the API reference and custom serializers.
+
+## Command-line conversion
+
+`olib-convert` reads an input file and writes an output file:
+
+```sh
+olib-convert [options] <input-file> <output-file>
+olib-convert samples/example1.json output.yaml
+olib-convert -i json -o xml input.txt output.txt
+```
+
+The tool detects formats from file extensions when options are omitted. Recognized extensions are `.json`, `.jsonb`, `.yaml`, `.yml`, `.xml`, `.toml`, `.txt`, and `.bin`. An unrecognized extension defaults to binary; a path without an extension requires an explicit format.
+
+| Option | Purpose |
+| --- | --- |
+| `-i`, `--input-format <format>` | Set the input format. |
+| `-o`, `--output-format <format>` | Set the output format. |
+| `-h`, `--help` | Show usage. |
+| `-v`, `--version` | Show version information. |
+
+Format names are `json`, `json-binary`, `yaml`, `xml`, `toml`, `txt`, and `binary`. Run the executable from the build's `bin` directory (or its configuration subdirectory with a multi-configuration generator).
 
 ## License
 
-MIT License - see [LICENSE](LICENSE)
-
-Copyright (c) 2026 Christian Luppi
+[MIT](LICENSE) © 2026 Christian Luppi

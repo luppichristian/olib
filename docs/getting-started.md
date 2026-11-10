@@ -1,7 +1,3 @@
----
-title: Getting Started
----
-
 # Getting Started
 
 This guide covers installation, basic concepts, and your first olib program.

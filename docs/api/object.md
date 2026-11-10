@@ -1,7 +1,3 @@
----
-title: Object Module
----
-
 # Object Module
 
 The object module (`olib/olib_object.h`) defines the core object types and manipulation functions.

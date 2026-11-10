@@ -57,6 +57,7 @@ jobs:
         fi
         cp README.md release/
         cp LICENSE release/
+        cp -R docs examples release/
     
     - name: Create archive (Linux/macOS)
       if: matrix.os != 'windows-latest'
