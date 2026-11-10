@@ -22,6 +22,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 #include <gtest/gtest.h>
+#include <cmath>
 #include <olib.h>
 #include <cstdio>
 #include <cstring>
@@ -256,7 +257,7 @@ TEST(EdgeCases, FloatSpecialValues) {
 
   // Negative zero
   EXPECT_TRUE(olib_object_set_float(obj, -0.0));
-  // Note: -0.0 and 0.0 are equal in comparisons
+  EXPECT_TRUE(std::signbit(olib_object_get_float(obj)));
 
   olib_object_free(obj);
 }
@@ -336,6 +337,8 @@ TEST(EdgeCases, SerializePrimitiveTypes) {
   char* json = nullptr;
   EXPECT_TRUE(olib_serializer_write_string(ser, bool_true, &json));
   olib_object_t* parsed = olib_serializer_read_string(ser, json);
+  ASSERT_NE(parsed, nullptr);
+  EXPECT_EQ(olib_object_get_type(parsed), OLIB_OBJECT_TYPE_BOOL);
   EXPECT_TRUE(olib_object_get_bool(parsed));
   olib_free(json);
   olib_object_free(bool_true);
@@ -347,6 +350,8 @@ TEST(EdgeCases, SerializePrimitiveTypes) {
   json = nullptr;
   EXPECT_TRUE(olib_serializer_write_string(ser, bool_false, &json));
   parsed = olib_serializer_read_string(ser, json);
+  ASSERT_NE(parsed, nullptr);
+  EXPECT_EQ(olib_object_get_type(parsed), OLIB_OBJECT_TYPE_BOOL);
   EXPECT_FALSE(olib_object_get_bool(parsed));
   olib_free(json);
   olib_object_free(bool_false);

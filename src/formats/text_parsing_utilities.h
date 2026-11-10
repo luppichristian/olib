@@ -56,7 +56,8 @@ typedef struct {
 // Context management
 // #############################################################################
 
-// Initialize a parsing context with the given buffer
+// Initialize a zero-initialized or previously used context with a new input;
+// existing temporary string storage is retained for reuse.
 void text_parse_init(text_parse_ctx_t* ctx, const char* buffer, size_t size);
 
 // Reset the parsing context (keeps temp_string allocation)
@@ -118,6 +119,10 @@ const char* text_parse_identifier(text_parse_ctx_t* ctx);
 // #############################################################################
 // Number parsing
 // #############################################################################
+
+// Classify an integer token in [start, end) without changing the context.
+// Values outside the object model's integer range return OLIB_OBJECT_TYPE_MAX.
+olib_object_type_t text_parse_integer_type(const text_parse_ctx_t* ctx, size_t start, size_t end);
 
 typedef struct {
   double float_value;

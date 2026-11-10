@@ -321,7 +321,7 @@ static bool jsonb_read_bool(void* ctx, bool* value) {
   uint8_t tag;
   if (!jsonb_read_u8(c, &tag) || tag != JSONB_TAG_BOOL) return false;
   uint8_t b;
-  if (!jsonb_read_u8(c, &b)) return false;
+  if (!jsonb_read_u8(c, &b) || b > 1) return false;
   *value = (b != 0);
   return true;
 }

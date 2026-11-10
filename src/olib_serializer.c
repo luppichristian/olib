@@ -392,8 +392,8 @@ OLIB_API bool olib_serializer_write_file_path(olib_serializer_t* serializer, oli
         return false;
     }
     bool result = olib_serializer_write_file(serializer, obj, file);
-    fclose(file);
-    return result;
+    int close_result = fclose(file);
+    return result && close_result == 0;
 }
 
 // #############################################################################
@@ -452,9 +452,13 @@ OLIB_API olib_object_t* olib_serializer_read_file(olib_serializer_t* serializer,
     }
     // Read entire file into buffer
     long start = ftell(file);
-    fseek(file, 0, SEEK_END);
+    if (start < 0 || fseek(file, 0, SEEK_END) != 0) {
+        return NULL;
+    }
     long end = ftell(file);
-    fseek(file, start, SEEK_SET);
+    if (end < start || fseek(file, start, SEEK_SET) != 0) {
+        return NULL;
+    }
     size_t size = (size_t)(end - start);
     if (size == 0) {
         return NULL;

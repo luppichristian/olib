@@ -286,6 +286,7 @@ TEST_P(SerializerFormatTest, RoundTrip) {
     olib_object_t* parsed = olib_serializer_read_string(ser, str);
     ASSERT_NE(parsed, nullptr);
     verify_test_object(parsed);
+    expect_round_trip_tree(original, parsed, format);
 
     olib_free(str);
     olib_object_free(parsed);
@@ -300,6 +301,7 @@ TEST_P(SerializerFormatTest, RoundTrip) {
     olib_object_t* parsed = olib_serializer_read(ser, data, size);
     ASSERT_NE(parsed, nullptr);
     verify_test_object(parsed);
+    expect_round_trip_tree(original, parsed, format);
 
     olib_free(data);
     olib_object_free(parsed);

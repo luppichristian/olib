@@ -26,6 +26,8 @@ SOFTWARE.
 #include <string.h>
 #include <stdlib.h>
 #include <ctype.h>
+#include <errno.h>
+#include <math.h>
 
 // #############################################################################
 // Context management
@@ -35,8 +37,8 @@ void text_parse_init(text_parse_ctx_t* ctx, const char* buffer, size_t size) {
   ctx->buffer = buffer;
   ctx->size = size;
   ctx->pos = 0;
-  ctx->temp_string = NULL;
-  ctx->temp_string_capacity = 0;
+  // Preserve the temporary buffer when a serializer is reused.  Contexts are
+  // zero-initialized on creation and their buffers are released by free_ctx.
 }
 
 void text_parse_reset(text_parse_ctx_t* ctx) {
@@ -196,6 +198,22 @@ const char* text_parse_identifier(text_parse_ctx_t* ctx) {
 // Number parsing
 // #############################################################################
 
+olib_object_type_t text_parse_integer_type(const text_parse_ctx_t* ctx, size_t start, size_t end) {
+  bool negative = false;
+  if (start < end && (ctx->buffer[start] == '-' || ctx->buffer[start] == '+')) {
+    negative = ctx->buffer[start++] == '-';
+  }
+  if (start == end) return OLIB_OBJECT_TYPE_MAX;
+  uint64_t magnitude = 0;
+  uint64_t limit = negative ? (uint64_t)INT64_MAX + 1 : UINT64_MAX;
+  for (size_t i = start; i < end; ++i) {
+    unsigned digit = (unsigned)(ctx->buffer[i] - '0');
+    if (digit > 9 || magnitude > (limit - digit) / 10) return OLIB_OBJECT_TYPE_MAX;
+    magnitude = magnitude * 10 + digit;
+  }
+  return !negative && magnitude > INT64_MAX ? OLIB_OBJECT_TYPE_UINT : OLIB_OBJECT_TYPE_INT;
+}
+
 bool text_parse_number(text_parse_ctx_t* ctx, text_parse_number_result_t* result) {
   text_parse_skip_whitespace(ctx);
   size_t start = ctx->pos;
@@ -239,6 +257,10 @@ bool text_parse_number(text_parse_ctx_t* ctx, text_parse_number_result_t* result
     if (ctx->pos < ctx->size && (ctx->buffer[ctx->pos] == '-' || ctx->buffer[ctx->pos] == '+')) {
       ctx->pos++;
     }
+    if (ctx->pos >= ctx->size || !isdigit((unsigned char)ctx->buffer[ctx->pos])) {
+      ctx->pos = start;
+      return false;
+    }
     while (ctx->pos < ctx->size && isdigit((unsigned char)ctx->buffer[ctx->pos])) {
       ctx->pos++;
     }
@@ -257,19 +279,32 @@ bool text_parse_number(text_parse_ctx_t* ctx, text_parse_number_result_t* result
   memcpy(ctx->temp_string, ctx->buffer + start, len);
   ctx->temp_string[len] = '\0';
 
+  errno = 0;
   if (result->is_float) {
-    result->float_value = strtod(ctx->temp_string, NULL);
-    result->int_value = (int64_t)result->float_value;
-    result->uint_value = (uint64_t)result->float_value;
+    char* end = NULL;
+    result->float_value = strtod(ctx->temp_string, &end);
+    if (*end != '\0' || !isfinite(result->float_value) ||
+        (errno == ERANGE && result->float_value == 0.0)) {
+      ctx->pos = start;
+      return false;
+    }
+    // The caller uses float_value for floating-point tokens. Casting an
+    // arbitrary finite double to an integer can overflow and is undefined.
+    result->int_value = 0;
+    result->uint_value = 0;
   } else {
     if (result->is_negative) {
       result->int_value = strtoll(ctx->temp_string, NULL, 10);
       result->uint_value = (uint64_t)result->int_value;
     } else {
       result->uint_value = strtoull(ctx->temp_string, NULL, 10);
-      result->int_value = (int64_t)result->uint_value;
+      result->int_value = result->uint_value <= INT64_MAX ? (int64_t)result->uint_value : 0;
     }
-    result->float_value = (double)result->int_value;
+    if (errno == ERANGE) {
+      ctx->pos = start;
+      return false;
+    }
+    result->float_value = result->is_negative ? (double)result->int_value : (double)result->uint_value;
   }
   return true;
 }

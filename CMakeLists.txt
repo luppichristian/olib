@@ -10,6 +10,7 @@ option(OLIB_BUILD_TESTS "Build olib tests" ON)
 option(OLIB_BUILD_EXAMPLES "Build olib examples" ON)
 option(OLIB_BUILD_CLI "Build olib-convert CLI utility" ON)
 option(OLIB_GTEST_FETCH "Fetch GoogleTest if not found" ON)
+option(OLIB_BUILD_FUZZER "Build the Clang libFuzzer parser target" OFF)
 
 #
 # C Standard
@@ -28,6 +29,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 include(FetchContent)
+include(GNUInstallDirs)
 
 #
 # Library Sources
@@ -60,6 +62,11 @@ if(OLIB_BUILD_SHARED)
         VERSION ${PROJECT_VERSION}
         SOVERSION ${PROJECT_VERSION_MAJOR}
     )
+    # Windows loads DLLs from the executable's directory. Keep built tools,
+    # examples, and the test executable alongside the shared library.
+    if(WIN32)
+        set_target_properties(olib PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    endif()
 else()
     add_library(olib-static STATIC ${OLIB_SOURCES} ${OLIB_HEADERS})
     add_library(olib::static ALIAS olib-static)
@@ -82,7 +89,7 @@ endif()
 target_include_directories(${OLIB_TARGET}
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-        $<INSTALL_INTERFACE:include>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 
 #
@@ -111,6 +118,9 @@ if(OLIB_BUILD_TESTS)
     add_executable(olib-tests
         ${OLIB_TEST_SOURCES}
     )
+    if(WIN32 AND OLIB_BUILD_SHARED)
+        set_target_properties(olib-tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    endif()
 
     target_include_directories(olib-tests
         PRIVATE
@@ -128,7 +138,44 @@ if(OLIB_BUILD_TESTS)
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     )
 
+    if(NOT CMAKE_CROSSCOMPILING)
+        add_test(NAME install-consumer
+            COMMAND ${CMAKE_COMMAND}
+                "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+                "-DBINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}"
+                "-DGENERATOR=${CMAKE_GENERATOR}"
+                "-DGENERATOR_PLATFORM=${CMAKE_GENERATOR_PLATFORM}"
+                "-DGENERATOR_TOOLSET=${CMAKE_GENERATOR_TOOLSET}"
+                "-DINSTALL_LIBDIR=${CMAKE_INSTALL_LIBDIR}"
+                "-DINSTALL_BINDIR=${CMAKE_INSTALL_BINDIR}"
+                "-DOLIB_SHARED=${OLIB_BUILD_SHARED}"
+                "-DCONFIG=$<CONFIG>"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/install/run_consumer.cmake"
+        )
+    endif()
+
     message(STATUS "Building tests with GoogleTest")
+endif()
+
+# The fuzz target compiles library sources separately so sanitizer and coverage
+# instrumentation do not alter ordinary library builds.
+if(OLIB_BUILD_FUZZER)
+    if(NOT CMAKE_C_COMPILER_ID MATCHES "Clang")
+        message(FATAL_ERROR "OLIB_BUILD_FUZZER requires Clang with libFuzzer support")
+    endif()
+    add_executable(olib-fuzz tests/fuzz/fuzz_readers.c ${OLIB_SOURCES})
+    target_include_directories(olib-fuzz PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+    target_compile_options(olib-fuzz PRIVATE -fsanitize=fuzzer,address,undefined -fno-omit-frame-pointer)
+    target_link_options(olib-fuzz PRIVATE -fsanitize=fuzzer,address,undefined)
+    if(NOT CMAKE_CROSSCOMPILING)
+        enable_testing()
+        add_test(NAME fuzz-smoke COMMAND ${CMAKE_COMMAND}
+            "-DFUZZ_EXECUTABLE=$<TARGET_FILE:olib-fuzz>"
+            "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+            "-DBINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/fuzz/run_smoke.cmake")
+        set_tests_properties(fuzz-smoke PROPERTIES TIMEOUT 120)
+    endif()
 endif()
 
 #
@@ -167,6 +214,10 @@ if(OLIB_BUILD_EXAMPLES)
         set_target_properties(olib-example-${example} PROPERTIES
             RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
         )
+
+        if(WIN32 AND OLIB_BUILD_SHARED AND OLIB_BUILD_TESTS AND NOT CMAKE_CROSSCOMPILING AND example STREQUAL "basic")
+            add_test(NAME windows-shared-example COMMAND olib-example-basic)
+        endif()
     endforeach()
 
     message(STATUS "Building examples")
@@ -196,6 +247,20 @@ if(OLIB_BUILD_CLI)
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )
 
+    if(OLIB_BUILD_TESTS AND NOT CMAKE_CROSSCOMPILING)
+        if(WIN32 AND OLIB_BUILD_SHARED)
+            add_test(NAME windows-shared-cli COMMAND olib-convert --version)
+        endif()
+        find_package(Python3 COMPONENTS Interpreter QUIET)
+        if(Python3_Interpreter_FOUND)
+            add_test(NAME format-interoperability
+                COMMAND ${Python3_EXECUTABLE}
+                    "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_interoperability.py"
+                    $<TARGET_FILE:olib-convert>
+                    $<TARGET_FILE_DIR:${OLIB_TARGET}>)
+        endif()
+    endif()
+
     # Install the CLI utility
     install(TARGETS olib-convert
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
@@ -208,21 +273,22 @@ endif()
 # Installation
 #
 
-include(GNUInstallDirs)
-
 install(TARGETS ${OLIB_TARGET}
     EXPORT olibTargets
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT olib
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT olib
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT olib
 )
 
-install(FILES ${OLIB_HEADERS}
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    COMPONENT olib
+    FILES_MATCHING PATTERN "*.h"
 )
 
 install(EXPORT olibTargets
     FILE olibTargets.cmake
     NAMESPACE olib::
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/olib
+    COMPONENT olib
 )

@@ -9,7 +9,7 @@ on:
 
 jobs:
   build-and-test:
-    name: ${{ matrix.os }} - ${{ matrix.build_type }}
+    name: ${{ matrix.os }} - ${{ matrix.build_type }} - shared=${{ matrix.shared }}
     runs-on: ${{ matrix.os }}
     
     strategy:
@@ -17,17 +17,25 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
         build_type: [Debug, Release]
+        shared: ["OFF", "ON"]
     
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install interoperability test dependency
+      run: python -m pip install PyYAML
     
     - name: Set up CMake
       uses: lukka/get-cmake@latest
     
     - name: Configure CMake
       run: |
-        cmake -B build -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DOLIB_BUILD_TESTS=ON
+        cmake -B build -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DOLIB_BUILD_TESTS=ON -DOLIB_BUILD_SHARED=${{ matrix.shared }}
     
     - name: Build
       run: cmake --build build --config ${{ matrix.build_type }}
@@ -40,8 +48,74 @@ jobs:
       if: failure()
       uses: actions/upload-artifact@v4
       with:
-        name: test-results-${{ matrix.os }}-${{ matrix.build_type }}
+        name: test-results-${{ matrix.os }}-${{ matrix.build_type }}-shared-${{ matrix.shared }}
         path: |
           build/Testing/Temporary/LastTest.log
           build/Testing/Temporary/LastTestsFailed.log
         if-no-files-found: ignore
+
+  sanitizers:
+    name: Linux - AddressSanitizer and UndefinedBehaviorSanitizer
+    runs-on: ubuntu-latest
+    env:
+      CC: clang
+      CXX: clang++
+      CFLAGS: -fsanitize=address,undefined -fno-omit-frame-pointer
+      CXXFLAGS: -fsanitize=address,undefined -fno-omit-frame-pointer
+      LDFLAGS: -fsanitize=address,undefined
+      ASAN_OPTIONS: detect_leaks=1
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - name: Install interoperability test dependency
+      run: python -m pip install PyYAML
+    - name: Configure
+      run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+    - name: Build
+      run: cmake --build build --parallel
+    - name: Run tests
+      run: ctest --test-dir build --output-on-failure
+
+  thread-sanitizer:
+    name: Linux - ThreadSanitizer
+    runs-on: ubuntu-latest
+    env:
+      CC: clang
+      CXX: clang++
+      CFLAGS: -fsanitize=thread -fno-omit-frame-pointer
+      CXXFLAGS: -fsanitize=thread -fno-omit-frame-pointer
+      LDFLAGS: -fsanitize=thread
+      TSAN_OPTIONS: halt_on_error=1
+    steps:
+    - uses: actions/checkout@v4
+    - name: Configure
+      run: >-
+        cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+        -DOLIB_BUILD_EXAMPLES=OFF -DOLIB_BUILD_CLI=OFF
+    - name: Build
+      run: cmake --build build --target olib-tests --parallel
+    - name: Check concurrent use
+      run: ctest --test-dir build -R '^Concurrency\.' --no-tests=error --output-on-failure
+
+  fuzz-smoke:
+    name: Linux - bounded parser fuzzing
+    runs-on: ubuntu-latest
+    env:
+      CC: clang
+      CXX: clang++
+      ASAN_OPTIONS: detect_leaks=1
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+    steps:
+    - uses: actions/checkout@v4
+    - name: Configure
+      run: >-
+        cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+        -DOLIB_BUILD_FUZZER=ON -DOLIB_BUILD_TESTS=OFF
+        -DOLIB_BUILD_EXAMPLES=OFF -DOLIB_BUILD_CLI=OFF
+    - name: Build fuzzer
+      run: cmake --build build --target olib-fuzz --parallel
+    - name: Run bounded fuzz smoke
+      run: ctest --test-dir build -R '^fuzz-smoke$' --no-tests=error --output-on-failure

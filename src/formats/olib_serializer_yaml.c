@@ -116,6 +116,8 @@ static bool yaml_write_newline_indent(yaml_ctx_t* ctx) {
 // Check if string needs quoting in YAML
 static bool yaml_needs_quoting(const char* str) {
   if (!str || !*str) return true;  // Empty strings need quotes
+  size_t length = strlen(str);
+  if (str[length - 1] == ' ' || str[length - 1] == '\t') return true;
 
   // Check first character
   char first = str[0];
@@ -163,9 +165,49 @@ static bool yaml_needs_quoting(const char* str) {
   return false;
 }
 
+// Strings are NUL-terminated, and the current reader does not support YAML's
+// hexadecimal control escapes. Reject those bytes instead of emitting invalid
+// YAML or silently changing their values.
+static bool yaml_valid_string(const char* value) {
+  if (!value) return true;
+  for (const unsigned char* p = (const unsigned char*)value; *p; ++p) {
+    if ((*p < 0x20 && *p != '\n' && *p != '\r' && *p != '\t') || *p == 0x7f) return false;
+  }
+  return true;
+}
+
+static bool yaml_write_quoted(yaml_ctx_t* ctx, const char* value) {
+  if (!yaml_valid_string(value) || !yaml_write_char(ctx, '"')) return false;
+  if (value) {
+    for (const char* p = value; *p; ++p) {
+      switch (*p) {
+        case '"': if (!yaml_write_str(ctx, "\\\"")) return false; break;
+        case '\\': if (!yaml_write_str(ctx, "\\\\")) return false; break;
+        case '\n': if (!yaml_write_str(ctx, "\\n")) return false; break;
+        case '\r': if (!yaml_write_str(ctx, "\\r")) return false; break;
+        case '\t': if (!yaml_write_str(ctx, "\\t")) return false; break;
+        default: if (!yaml_write_char(ctx, *p)) return false; break;
+      }
+    }
+  }
+  return yaml_write_char(ctx, '"');
+}
+
+static bool yaml_plain_identifier(const char* key) {
+  if (!key || !*key) return false;
+  for (const char* p = key; *p; ++p) {
+    if (!((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') ||
+          (*p >= '0' && *p <= '9') || *p == '_')) return false;
+  }
+  return true;
+}
+
 static bool yaml_write_key_prefix(yaml_ctx_t* ctx) {
   if (ctx->pending_key) {
-    if (!yaml_write_str(ctx, ctx->pending_key)) return false;
+    if (!yaml_valid_string(ctx->pending_key)) return false;
+    if (!yaml_plain_identifier(ctx->pending_key) || yaml_needs_quoting(ctx->pending_key)) {
+      if (!yaml_write_quoted(ctx, ctx->pending_key)) return false;
+    } else if (!yaml_write_str(ctx, ctx->pending_key)) return false;
     if (!yaml_write_str(ctx, ": ")) return false;
     ctx->pending_key = NULL;
     ctx->struct_inline_value = true;
@@ -232,6 +274,7 @@ static bool yaml_write_uint(void* ctx, uint64_t value) {
 }
 
 static bool yaml_write_float(void* ctx, double value) {
+  if (!isfinite(value)) return false;
   yaml_ctx_t* c = (yaml_ctx_t*)ctx;
 
   if (c->in_flow_list) {
@@ -254,12 +297,17 @@ static bool yaml_write_float(void* ctx, double value) {
   c->struct_inline_value = false;
 
   char buf[64];
-  snprintf(buf, sizeof(buf), "%g", value);
+  snprintf(buf, sizeof(buf), "%.17g", value);
+  if (!strchr(buf, '.') && !strchr(buf, 'e') && !strchr(buf, 'E')) {
+    strcat(buf, ".0");
+  }
   return yaml_write_str(c, buf);
 }
 
 static bool yaml_write_string(void* ctx, const char* value) {
   yaml_ctx_t* c = (yaml_ctx_t*)ctx;
+
+  if (!yaml_valid_string(value)) return false;
 
   if (c->in_flow_list) {
     if (!c->flow_list_first_item) {
@@ -282,33 +330,7 @@ static bool yaml_write_string(void* ctx, const char* value) {
 
   // Check if we need to quote the string
   if (!value || yaml_needs_quoting(value)) {
-    if (!yaml_write_char(c, '"')) return false;
-    if (value) {
-      // Escape special characters
-      for (const char* p = value; *p; p++) {
-        switch (*p) {
-          case '"':
-            if (!yaml_write_str(c, "\\\"")) return false;
-            break;
-          case '\\':
-            if (!yaml_write_str(c, "\\\\")) return false;
-            break;
-          case '\n':
-            if (!yaml_write_str(c, "\\n")) return false;
-            break;
-          case '\r':
-            if (!yaml_write_str(c, "\\r")) return false;
-            break;
-          case '\t':
-            if (!yaml_write_str(c, "\\t")) return false;
-            break;
-          default:
-            if (!yaml_write_char(c, *p)) return false;
-            break;
-        }
-      }
-    }
-    if (!yaml_write_char(c, '"')) return false;
+    if (!yaml_write_quoted(c, value)) return false;
   } else {
     // Unquoted string
     if (!yaml_write_str(c, value)) return false;
@@ -517,6 +539,74 @@ static const char* yaml_parse_unquoted_value(text_parse_ctx_t* ctx) {
   return ctx->temp_string;
 }
 
+// Recognize mapping keys before testing whether their text resembles a scalar.
+// Quoted keys may contain colons, so only inspect the delimiter after the quote.
+static bool yaml_looks_like_mapping(const text_parse_ctx_t* p, size_t pos) {
+  if (pos >= p->size) return false;
+  char quote = p->buffer[pos];
+  if (quote == '"' || quote == '\'') {
+    ++pos;
+    bool closed = false;
+    while (pos < p->size) {
+      char ch = p->buffer[pos++];
+      if (quote == '"' && ch == '\\' && pos < p->size) { ++pos; continue; }
+      if (ch == quote) {
+        if (quote == '\'' && pos < p->size && p->buffer[pos] == '\'') { ++pos; continue; }
+        closed = true;
+        break;
+      }
+      if (ch == '\n' || ch == '\r') return false;
+    }
+    if (!closed) return false;
+    while (pos < p->size && (p->buffer[pos] == ' ' || p->buffer[pos] == '\t')) ++pos;
+    return pos < p->size && p->buffer[pos] == ':' &&
+           (pos + 1 == p->size || isspace((unsigned char)p->buffer[pos + 1]));
+  }
+  while (pos < p->size) {
+    char ch = p->buffer[pos];
+    if (ch == '\n' || ch == '\r' || ch == '#' || ch == ',' || ch == ']' || ch == '}') return false;
+    if (ch == ':' && (pos + 1 == p->size || isspace((unsigned char)p->buffer[pos + 1]))) return true;
+    ++pos;
+  }
+  return false;
+}
+
+static bool yaml_bool_token(const text_parse_ctx_t* p, size_t pos) {
+  static const char* words[] = {"true", "True", "TRUE", "false", "False", "FALSE",
+                                 "yes", "Yes", "YES", "no", "No", "NO",
+                                 "on", "On", "ON", "off", "Off", "OFF"};
+  for (size_t i = 0; i < sizeof(words) / sizeof(words[0]); ++i) {
+    size_t length = strlen(words[i]);
+    if (length > p->size - pos || memcmp(p->buffer + pos, words[i], length) != 0) continue;
+    size_t end = pos + length;
+    while (end < p->size && (p->buffer[end] == ' ' || p->buffer[end] == '\t')) ++end;
+    if (end == p->size || p->buffer[end] == '\n' || p->buffer[end] == '\r' ||
+        p->buffer[end] == ',' || p->buffer[end] == ']' || p->buffer[end] == '}' || p->buffer[end] == '#') {
+      return true;
+    }
+  }
+  return false;
+}
+
+static const char* yaml_parse_plain_key(text_parse_ctx_t* p) {
+  text_parse_skip_whitespace(p);
+  size_t start = p->pos;
+  while (p->pos < p->size) {
+    char ch = p->buffer[p->pos];
+    if (ch == '\n' || ch == '\r' || ch == '#' || ch == ',' || ch == ']' || ch == '}') return NULL;
+    if (ch == ':' && (p->pos + 1 == p->size || isspace((unsigned char)p->buffer[p->pos + 1]))) break;
+    ++p->pos;
+  }
+  if (p->pos == p->size) return NULL;
+  size_t end = p->pos;
+  while (end > start && (p->buffer[end - 1] == ' ' || p->buffer[end - 1] == '\t')) --end;
+  size_t len = end - start;
+  if (!len || !text_parse_ensure_temp(p, len)) return NULL;
+  memcpy(p->temp_string, p->buffer + start, len);
+  p->temp_string[len] = '\0';
+  return p->temp_string;
+}
+
 // Helper to skip block list item prefix "- " if we're reading inside a block list
 static void yaml_skip_block_list_prefix(yaml_ctx_t* c) {
   text_parse_ctx_t* p = &c->parse;
@@ -586,6 +676,10 @@ static olib_object_type_t yaml_read_peek(void* ctx) {
     return OLIB_OBJECT_TYPE_STRUCT;
   }
 
+  if (yaml_looks_like_mapping(p, peek_pos)) {
+    return OLIB_OBJECT_TYPE_STRUCT;
+  }
+
   // Quoted string
   if (ch == '"' || ch == '\'') {
     return OLIB_OBJECT_TYPE_STRING;
@@ -602,63 +696,11 @@ static olib_object_type_t yaml_read_peek(void* ctx) {
     if (pos < p->size && (p->buffer[pos] == '.' || p->buffer[pos] == 'e' || p->buffer[pos] == 'E')) {
       return OLIB_OBJECT_TYPE_FLOAT;
     }
-    return OLIB_OBJECT_TYPE_INT;
+    return text_parse_integer_type(p, peek_pos, pos);
   }
 
-  // Boolean
-  if (ch == 't' || ch == 'T') {
-    if ((peek_pos + 4 <= p->size && strncmp(p->buffer + peek_pos, "true", 4) == 0) ||
-        (peek_pos + 4 <= p->size && strncmp(p->buffer + peek_pos, "True", 4) == 0) ||
-        (peek_pos + 4 <= p->size && strncmp(p->buffer + peek_pos, "TRUE", 4) == 0)) {
-      return OLIB_OBJECT_TYPE_BOOL;
-    }
-  }
-  if (ch == 'f' || ch == 'F') {
-    if ((peek_pos + 5 <= p->size && strncmp(p->buffer + peek_pos, "false", 5) == 0) ||
-        (peek_pos + 5 <= p->size && strncmp(p->buffer + peek_pos, "False", 5) == 0) ||
-        (peek_pos + 5 <= p->size && strncmp(p->buffer + peek_pos, "FALSE", 5) == 0)) {
-      return OLIB_OBJECT_TYPE_BOOL;
-    }
-  }
-  if (ch == 'y' || ch == 'Y') {
-    if ((peek_pos + 3 <= p->size && strncmp(p->buffer + peek_pos, "yes", 3) == 0) ||
-        (peek_pos + 3 <= p->size && strncmp(p->buffer + peek_pos, "Yes", 3) == 0) ||
-        (peek_pos + 3 <= p->size && strncmp(p->buffer + peek_pos, "YES", 3) == 0)) {
-      return OLIB_OBJECT_TYPE_BOOL;
-    }
-  }
-  if (ch == 'n' || ch == 'N') {
-    if ((peek_pos + 2 <= p->size && strncmp(p->buffer + peek_pos, "no", 2) == 0) ||
-        (peek_pos + 2 <= p->size && strncmp(p->buffer + peek_pos, "No", 2) == 0) ||
-        (peek_pos + 2 <= p->size && strncmp(p->buffer + peek_pos, "NO", 2) == 0)) {
-      return OLIB_OBJECT_TYPE_BOOL;
-    }
-  }
-  if (ch == 'o' || ch == 'O') {
-    if ((peek_pos + 2 <= p->size && strncmp(p->buffer + peek_pos, "on", 2) == 0) ||
-        (peek_pos + 2 <= p->size && strncmp(p->buffer + peek_pos, "On", 2) == 0) ||
-        (peek_pos + 2 <= p->size && strncmp(p->buffer + peek_pos, "ON", 2) == 0)) {
-      return OLIB_OBJECT_TYPE_BOOL;
-    }
-    if ((peek_pos + 3 <= p->size && strncmp(p->buffer + peek_pos, "off", 3) == 0) ||
-        (peek_pos + 3 <= p->size && strncmp(p->buffer + peek_pos, "Off", 3) == 0) ||
-        (peek_pos + 3 <= p->size && strncmp(p->buffer + peek_pos, "OFF", 3) == 0)) {
-      return OLIB_OBJECT_TYPE_BOOL;
-    }
-  }
-
-  // Check if this is a key (has a colon) -> struct
-  size_t pos = peek_pos;
-  while (pos < p->size && p->buffer[pos] != '\n' && p->buffer[pos] != '#') {
-    if (p->buffer[pos] == ':') {
-      // Make sure it's followed by space, newline, or carriage return
-      if (pos + 1 >= p->size || p->buffer[pos + 1] == ' ' || 
-          p->buffer[pos + 1] == '\n' || p->buffer[pos + 1] == '\r') {
-        return OLIB_OBJECT_TYPE_STRUCT;
-      }
-    }
-    pos++;
-  }
+  // A plain string may begin with a boolean word (e.g. "false alarm").
+  if (yaml_bool_token(p, peek_pos)) return OLIB_OBJECT_TYPE_BOOL;
 
   // Default to string
   return OLIB_OBJECT_TYPE_STRING;
@@ -922,7 +964,7 @@ static bool yaml_read_struct_key(void* ctx, const char** key) {
     *key = str;
   } else {
     // Unquoted key
-    const char* id = text_parse_identifier(p);
+    const char* id = yaml_parse_plain_key(p);
     if (!id) return false;
     *key = id;
   }

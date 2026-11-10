@@ -121,7 +121,8 @@ OLIB_API olib_object_t* olib_serializer_read(olib_serializer_t* serializer, cons
 // Thread safety: serialize use of the instance and keep input data stable.
 OLIB_API olib_object_t* olib_serializer_read_string(olib_serializer_t* serializer, const char* string);
 
-// olib_serializer_read_file: Works with both text and binary serializers (reads file in appropriate mode)
+// olib_serializer_read_file: Reads from the current position to the end of a
+// seekable stream. Returns NULL if positioning or reading fails.
 // Thread safety: serialize use of the instance and coordinate stream access.
 OLIB_API olib_object_t* olib_serializer_read_file(olib_serializer_t* serializer, FILE* file);
 

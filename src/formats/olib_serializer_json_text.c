@@ -29,6 +29,7 @@ SOFTWARE.
 #include <stdlib.h>
 #include <ctype.h>
 #include <math.h>
+#include <errno.h>
 
 // #############################################################################
 // Context structure for JSON text serialization
@@ -52,6 +53,10 @@ typedef struct {
 
   // Read mode (using shared parsing utilities)
   text_parse_ctx_t parse;
+  int read_depth;
+  int read_container[64];
+  bool read_first_item[64];
+  bool read_error;
 } json_ctx_t;
 
 // #############################################################################
@@ -133,6 +138,24 @@ static bool json_write_comma_if_needed(json_ctx_t* ctx) {
 
 static bool json_write_escaped_string(json_ctx_t* ctx, const char* value);
 
+// Return the length of one valid UTF-8 sequence, or zero for invalid input.
+static size_t json_utf8_length(const unsigned char* s, size_t remaining) {
+  unsigned char c = s[0];
+  size_t length;
+  if (c < 0x80) return 1;
+  if (c >= 0xC2 && c <= 0xDF) length = 2;
+  else if (c >= 0xE0 && c <= 0xEF) length = 3;
+  else if (c >= 0xF0 && c <= 0xF4) length = 4;
+  else return 0;
+  if (remaining < length) return 0;
+  for (size_t i = 1; i < length; ++i) {
+    if (s[i] < 0x80 || s[i] > 0xBF) return 0;
+  }
+  if ((c == 0xE0 && s[1] < 0xA0) || (c == 0xED && s[1] >= 0xA0) ||
+      (c == 0xF0 && s[1] < 0x90) || (c == 0xF4 && s[1] >= 0x90)) return 0;
+  return length;
+}
+
 static bool json_write_key_prefix(json_ctx_t* ctx) {
   int container = json_get_container_type(ctx);
 
@@ -166,8 +189,17 @@ static bool json_write_escaped_string(json_ctx_t* ctx, const char* value) {
   if (!json_write_char(ctx, '"')) return false;
 
   if (value) {
+    const char* end = value + strlen(value);
     for (const char* p = value; *p; p++) {
       unsigned char c = (unsigned char)*p;
+      if (c >= 0x80) {
+        size_t length = json_utf8_length((const unsigned char*)p, (size_t)(end - p));
+        if (!length || !json_ensure_write_capacity(ctx, length)) return false;
+        memcpy(ctx->write_buffer + ctx->write_size, p, length);
+        ctx->write_size += length;
+        p += length - 1;
+        continue;
+      }
       switch (c) {
         case '"':
           if (!json_write_str(ctx, "\\\"")) return false;
@@ -235,27 +267,21 @@ static bool json_write_uint(void* ctx, uint64_t value) {
 static bool json_write_float(void* ctx, double value) {
   json_ctx_t* c = (json_ctx_t*)ctx;
 
+  if (!isfinite(value)) return false;
   if (!json_write_value_prefix(c)) return false;
 
   char buf[64];
-  // Handle special float values (JSON doesn't support Infinity/NaN)
-  if (isnan(value)) {
-    snprintf(buf, sizeof(buf), "null");
-  } else if (isinf(value)) {
-    snprintf(buf, sizeof(buf), "null");
-  } else {
-    snprintf(buf, sizeof(buf), "%.17g", value);
-    // Ensure the output looks like a floating point number
-    bool has_decimal = false;
-    for (char* p = buf; *p; p++) {
-      if (*p == '.' || *p == 'e' || *p == 'E') {
-        has_decimal = true;
-        break;
-      }
+  snprintf(buf, sizeof(buf), "%.17g", value);
+  // Ensure the output looks like a floating point number
+  bool has_decimal = false;
+  for (char* p = buf; *p; p++) {
+    if (*p == '.' || *p == 'e' || *p == 'E') {
+      has_decimal = true;
+      break;
     }
-    if (!has_decimal) {
-      strcat(buf, ".0");
-    }
+  }
+  if (!has_decimal) {
+    strcat(buf, ".0");
   }
   return json_write_str(c, buf);
 }
@@ -279,6 +305,7 @@ static bool json_write_bool(void* ctx, bool value) {
 static bool json_write_list_begin(void* ctx, size_t size) {
   (void)size;
   json_ctx_t* c = (json_ctx_t*)ctx;
+  if (c->stack_depth >= 64) return false;
 
   if (!json_write_value_prefix(c)) return false;
 
@@ -317,6 +344,7 @@ static bool json_write_list_end(void* ctx) {
 
 static bool json_write_struct_begin(void* ctx) {
   json_ctx_t* c = (json_ctx_t*)ctx;
+  if (c->stack_depth >= 64) return false;
 
   if (!json_write_value_prefix(c)) return false;
 
@@ -375,6 +403,25 @@ static void json_skip_whitespace(text_parse_ctx_t* p) {
   }
 }
 
+static int json_hex_digit(char ch) {
+  if (ch >= '0' && ch <= '9') return ch - '0';
+  if (ch >= 'a' && ch <= 'f') return ch - 'a' + 10;
+  if (ch >= 'A' && ch <= 'F') return ch - 'A' + 10;
+  return -1;
+}
+
+static bool json_read_hex4(text_parse_ctx_t* p, unsigned int* code) {
+  if (p->size - p->pos < 4) return false;
+  unsigned int result = 0;
+  for (int i = 0; i < 4; ++i) {
+    int digit = json_hex_digit(p->buffer[p->pos++]);
+    if (digit < 0) return false;
+    result = (result << 4) | (unsigned int)digit;
+  }
+  *code = result;
+  return true;
+}
+
 // Parse a JSON string, handling escape sequences
 static const char* json_parse_string(text_parse_ctx_t* p) {
   json_skip_whitespace(p);
@@ -384,42 +431,26 @@ static const char* json_parse_string(text_parse_ctx_t* p) {
   }
   p->pos++;  // Skip opening quote
 
-  // First pass: calculate length
+  // The encoded source length is an upper bound on decoded UTF-8 bytes.
   size_t start = p->pos;
-  size_t len = 0;
-  while (p->pos < p->size && p->buffer[p->pos] != '"') {
-    if (p->buffer[p->pos] == '\\' && p->pos + 1 < p->size) {
-      p->pos++;
-      char esc = p->buffer[p->pos];
-      if (esc == 'u') {
-        // Unicode escape: \uXXXX
-        p->pos += 4;  // Skip 4 hex digits
-        len++;  // Simplified: treat as single char
-      } else {
-        len++;
-      }
-    } else {
-      len++;
-    }
-    p->pos++;
+  size_t end = start;
+  while (end < p->size && p->buffer[end] != '"') {
+    if (p->buffer[end] == '\\' && end + 1 < p->size) end++;
+    end++;
   }
-
-  if (p->pos >= p->size) {
+  if (end >= p->size) {
     return NULL;  // Unterminated string
   }
-
-  // Allocate temp string
-  if (!text_parse_ensure_temp(p, len)) {
+  if (!text_parse_ensure_temp(p, end - start)) {
     return NULL;
   }
 
-  // Second pass: copy with escape handling
-  p->pos = start;
   size_t out = 0;
-  while (p->pos < p->size && p->buffer[p->pos] != '"') {
-    if (p->buffer[p->pos] == '\\' && p->pos + 1 < p->size) {
-      p->pos++;
-      char esc = p->buffer[p->pos];
+  while (p->pos < end) {
+    unsigned char ch = (unsigned char)p->buffer[p->pos++];
+    if (ch == '\\') {
+      if (p->pos >= end) return NULL;
+      char esc = p->buffer[p->pos++];
       switch (esc) {
         case '"':  p->temp_string[out++] = '"'; break;
         case '\\': p->temp_string[out++] = '\\'; break;
@@ -430,39 +461,49 @@ static const char* json_parse_string(text_parse_ctx_t* p) {
         case 'r':  p->temp_string[out++] = '\r'; break;
         case 't':  p->temp_string[out++] = '\t'; break;
         case 'u': {
-          // Unicode escape: \uXXXX - simplified handling
-          if (p->pos + 4 < p->size) {
-            char hex[5] = {p->buffer[p->pos+1], p->buffer[p->pos+2],
-                           p->buffer[p->pos+3], p->buffer[p->pos+4], 0};
-            unsigned int code = (unsigned int)strtoul(hex, NULL, 16);
-            if (code < 0x80) {
-              p->temp_string[out++] = (char)code;
-            } else if (code < 0x800) {
-              p->temp_string[out++] = (char)(0xC0 | (code >> 6));
-              p->temp_string[out++] = (char)(0x80 | (code & 0x3F));
-            } else {
-              p->temp_string[out++] = (char)(0xE0 | (code >> 12));
-              p->temp_string[out++] = (char)(0x80 | ((code >> 6) & 0x3F));
-              p->temp_string[out++] = (char)(0x80 | (code & 0x3F));
-            }
-            p->pos += 4;
+          unsigned int code;
+          if (end - p->pos < 4 || !json_read_hex4(p, &code)) return NULL;
+          if (code >= 0xD800 && code <= 0xDBFF) {
+            unsigned int low;
+            if (end - p->pos < 6 || p->buffer[p->pos] != '\\' || p->buffer[p->pos + 1] != 'u') return NULL;
+            p->pos += 2;
+            if (!json_read_hex4(p, &low) || low < 0xDC00 || low > 0xDFFF) return NULL;
+            code = 0x10000 + ((code - 0xD800) << 10) + (low - 0xDC00);
+          } else if (code >= 0xDC00 && code <= 0xDFFF) {
+            return NULL;
+          }
+          // Object strings are NUL terminated and cannot represent U+0000.
+          if (code == 0) return NULL;
+          if (code < 0x80) {
+            p->temp_string[out++] = (char)code;
+          } else if (code < 0x800) {
+            p->temp_string[out++] = (char)(0xC0 | (code >> 6));
+            p->temp_string[out++] = (char)(0x80 | (code & 0x3F));
+          } else if (code < 0x10000) {
+            p->temp_string[out++] = (char)(0xE0 | (code >> 12));
+            p->temp_string[out++] = (char)(0x80 | ((code >> 6) & 0x3F));
+            p->temp_string[out++] = (char)(0x80 | (code & 0x3F));
+          } else {
+            p->temp_string[out++] = (char)(0xF0 | (code >> 18));
+            p->temp_string[out++] = (char)(0x80 | ((code >> 12) & 0x3F));
+            p->temp_string[out++] = (char)(0x80 | ((code >> 6) & 0x3F));
+            p->temp_string[out++] = (char)(0x80 | (code & 0x3F));
           }
           break;
         }
-        default:
-          p->temp_string[out++] = esc;
-          break;
+        default: return NULL;
       }
     } else {
-      p->temp_string[out++] = p->buffer[p->pos];
+      if (ch < 0x20) return NULL;
+      size_t length = json_utf8_length((const unsigned char*)p->buffer + p->pos - 1, end - p->pos + 1);
+      if (!length) return NULL;
+      memcpy(p->temp_string + out, p->buffer + p->pos - 1, length);
+      out += length;
+      p->pos += length - 1;
     }
-    p->pos++;
   }
   p->temp_string[out] = '\0';
-
-  if (p->pos < p->size && p->buffer[p->pos] == '"') {
-    p->pos++;  // Skip closing quote
-  }
+  p->pos++;  // Skip closing quote
 
   return p->temp_string;
 }
@@ -489,14 +530,18 @@ static bool json_parse_number(text_parse_ctx_t* p, text_parse_number_result_t* r
     return false;
   }
 
-  while (p->pos < p->size && isdigit((unsigned char)p->buffer[p->pos])) {
+  if (p->buffer[p->pos] == '0') {
     p->pos++;
+    if (p->pos < p->size && isdigit((unsigned char)p->buffer[p->pos])) return false;
+  } else {
+    while (p->pos < p->size && isdigit((unsigned char)p->buffer[p->pos])) p->pos++;
   }
 
   // Fractional part
   if (p->pos < p->size && p->buffer[p->pos] == '.') {
     is_float = true;
     p->pos++;
+    if (p->pos >= p->size || !isdigit((unsigned char)p->buffer[p->pos])) return false;
     while (p->pos < p->size && isdigit((unsigned char)p->buffer[p->pos])) {
       p->pos++;
     }
@@ -509,6 +554,7 @@ static bool json_parse_number(text_parse_ctx_t* p, text_parse_number_result_t* r
     if (p->pos < p->size && (p->buffer[p->pos] == '+' || p->buffer[p->pos] == '-')) {
       p->pos++;
     }
+    if (p->pos >= p->size || !isdigit((unsigned char)p->buffer[p->pos])) return false;
     while (p->pos < p->size && isdigit((unsigned char)p->buffer[p->pos])) {
       p->pos++;
     }
@@ -524,19 +570,29 @@ static bool json_parse_number(text_parse_ctx_t* p, text_parse_number_result_t* r
   result->is_float = is_float;
   result->is_negative = is_negative;
 
+  errno = 0;
   if (is_float) {
     result->float_value = strtod(buf, NULL);
-    result->int_value = (int64_t)result->float_value;
-    result->uint_value = (uint64_t)result->float_value;
+    if (!isfinite(result->float_value) || (errno == ERANGE && result->float_value == 0.0)) {
+      olib_free(buf);
+      return false;
+    }
+    result->int_value = 0;
+    result->uint_value = 0;
   } else {
     if (is_negative) {
       result->int_value = strtoll(buf, NULL, 10);
       result->uint_value = (uint64_t)result->int_value;
+      result->float_value = (double)result->int_value;
     } else {
       result->uint_value = strtoull(buf, NULL, 10);
-      result->int_value = (int64_t)result->uint_value;
+      result->int_value = result->uint_value <= INT64_MAX ? (int64_t)result->uint_value : 0;
+      result->float_value = (double)result->uint_value;
     }
-    result->float_value = (double)result->int_value;
+    if (errno == ERANGE) {
+      olib_free(buf);
+      return false;
+    }
   }
 
   olib_free(buf);
@@ -552,10 +608,18 @@ static olib_object_type_t json_read_peek(void* ctx) {
   text_parse_ctx_t* p = &c->parse;
   json_skip_whitespace(p);
 
-  // Skip comma if present (between list/object elements)
-  if (p->pos < p->size && p->buffer[p->pos] == ',') {
-    p->pos++;
-    json_skip_whitespace(p);
+  // Object keys consume their own commas. For a list, each element after the
+  // first must have exactly one comma, while the first may not have one.
+  if (c->read_depth > 0 && c->read_container[c->read_depth - 1] == 1) {
+    int index = c->read_depth - 1;
+    if (c->read_first_item[index]) {
+      if (p->pos < p->size && p->buffer[p->pos] == ',') return OLIB_OBJECT_TYPE_MAX;
+    } else {
+      if (p->pos >= p->size || p->buffer[p->pos] != ',') return OLIB_OBJECT_TYPE_MAX;
+      p->pos++;
+      json_skip_whitespace(p);
+    }
+    c->read_first_item[index] = false;
   }
 
   if (p->pos >= p->size) {
@@ -583,6 +647,13 @@ static olib_object_type_t json_read_peek(void* ctx) {
     if (pos < p->size && (p->buffer[pos] == '.' || p->buffer[pos] == 'e' || p->buffer[pos] == 'E')) {
       return OLIB_OBJECT_TYPE_FLOAT;
     }
+    if (ch != '-') {
+      size_t digits = pos - p->pos;
+      const char* max_signed = "9223372036854775807";
+      if (digits > 19 || (digits == 19 && strncmp(p->buffer + p->pos, max_signed, 19) > 0)) {
+        return OLIB_OBJECT_TYPE_UINT;
+      }
+    }
     return OLIB_OBJECT_TYPE_INT;
   }
   if (ch == 't' || ch == 'f') {
@@ -593,13 +664,8 @@ static olib_object_type_t json_read_peek(void* ctx) {
       return OLIB_OBJECT_TYPE_BOOL;
     }
   }
-  if (ch == 'n') {
-    // null - treat as a special case, return as int with value 0
-    if (p->pos + 4 <= p->size && strncmp(p->buffer + p->pos, "null", 4) == 0) {
-      return OLIB_OBJECT_TYPE_INT;
-    }
-  }
-
+  // The object model cannot represent JSON null; reject it instead of
+  // silently replacing it with another value.
   return OLIB_OBJECT_TYPE_MAX;
 }
 
@@ -607,13 +673,6 @@ static bool json_read_int(void* ctx, int64_t* value) {
   json_ctx_t* c = (json_ctx_t*)ctx;
   text_parse_ctx_t* p = &c->parse;
   json_skip_whitespace(p);
-
-  // Handle null
-  if (p->pos + 4 <= p->size && strncmp(p->buffer + p->pos, "null", 4) == 0) {
-    p->pos += 4;
-    *value = 0;
-    return true;
-  }
 
   text_parse_number_result_t result;
   if (!json_parse_number(p, &result)) return false;
@@ -626,13 +685,6 @@ static bool json_read_uint(void* ctx, uint64_t* value) {
   text_parse_ctx_t* p = &c->parse;
   json_skip_whitespace(p);
 
-  // Handle null
-  if (p->pos + 4 <= p->size && strncmp(p->buffer + p->pos, "null", 4) == 0) {
-    p->pos += 4;
-    *value = 0;
-    return true;
-  }
-
   text_parse_number_result_t result;
   if (!json_parse_number(p, &result)) return false;
   *value = result.uint_value;
@@ -643,13 +695,6 @@ static bool json_read_float(void* ctx, double* value) {
   json_ctx_t* c = (json_ctx_t*)ctx;
   text_parse_ctx_t* p = &c->parse;
   json_skip_whitespace(p);
-
-  // Handle null (treat as NaN or 0)
-  if (p->pos + 4 <= p->size && strncmp(p->buffer + p->pos, "null", 4) == 0) {
-    p->pos += 4;
-    *value = 0.0;
-    return true;
-  }
 
   text_parse_number_result_t result;
   if (!json_parse_number(p, &result)) return false;
@@ -687,11 +732,14 @@ static bool json_read_list_begin(void* ctx, size_t* size) {
   json_ctx_t* c = (json_ctx_t*)ctx;
   text_parse_ctx_t* p = &c->parse;
   json_skip_whitespace(p);
+  if (c->read_depth >= 64) return false;
 
   if (p->pos >= p->size || p->buffer[p->pos] != '[') {
     return false;
   }
   p->pos++;  // Skip '['
+  c->read_container[c->read_depth] = 1;
+  c->read_first_item[c->read_depth++] = true;
 
   // Count elements by scanning ahead (without consuming)
   size_t saved_pos = p->pos;
@@ -742,16 +790,11 @@ static bool json_read_list_end(void* ctx) {
   text_parse_ctx_t* p = &c->parse;
   json_skip_whitespace(p);
 
-  // Skip optional comma
-  if (p->pos < p->size && p->buffer[p->pos] == ',') {
-    p->pos++;
-    json_skip_whitespace(p);
-  }
-
   if (p->pos >= p->size || p->buffer[p->pos] != ']') {
     return false;
   }
   p->pos++;  // Skip ']'
+  c->read_depth--;
   return true;
 }
 
@@ -759,11 +802,14 @@ static bool json_read_struct_begin(void* ctx) {
   json_ctx_t* c = (json_ctx_t*)ctx;
   text_parse_ctx_t* p = &c->parse;
   json_skip_whitespace(p);
+  if (c->read_depth >= 64) return false;
 
   if (p->pos >= p->size || p->buffer[p->pos] != '{') {
     return false;
   }
   p->pos++;  // Skip '{'
+  c->read_container[c->read_depth] = 2;
+  c->read_first_item[c->read_depth++] = true;
   return true;
 }
 
@@ -772,10 +818,19 @@ static bool json_read_struct_key(void* ctx, const char** key) {
   text_parse_ctx_t* p = &c->parse;
   json_skip_whitespace(p);
 
-  // Skip comma if present
-  if (p->pos < p->size && p->buffer[p->pos] == ',') {
+  if (p->pos < p->size && p->buffer[p->pos] == '}') return false;
+  bool first = c->read_first_item[c->read_depth - 1];
+  if (!first) {
+    if (p->pos >= p->size || p->buffer[p->pos] != ',') {
+      c->read_error = true;
+      return false;
+    }
     p->pos++;
     json_skip_whitespace(p);
+    if (p->pos >= p->size || p->buffer[p->pos] == '}') {
+      c->read_error = true;
+      return false;
+    }
   }
 
   // Check if we've reached the end of the struct
@@ -785,15 +840,20 @@ static bool json_read_struct_key(void* ctx, const char** key) {
 
   // Read key (must be a string)
   const char* k = json_parse_string(p);
-  if (!k) return false;
+  if (!k) {
+    c->read_error = true;
+    return false;
+  }
 
   // Skip colon
   json_skip_whitespace(p);
   if (p->pos >= p->size || p->buffer[p->pos] != ':') {
+    c->read_error = true;
     return false;
   }
   p->pos++;  // Skip ':'
 
+  c->read_first_item[c->read_depth - 1] = false;
   *key = k;
   return true;
 }
@@ -802,11 +862,13 @@ static bool json_read_struct_end(void* ctx) {
   json_ctx_t* c = (json_ctx_t*)ctx;
   text_parse_ctx_t* p = &c->parse;
   json_skip_whitespace(p);
+  if (c->read_error) return false;
 
   if (p->pos >= p->size || p->buffer[p->pos] != '}') {
     return false;
   }
   p->pos++;  // Skip '}'
+  c->read_depth--;
   return true;
 }
 
@@ -852,6 +914,8 @@ static bool json_finish_write(void* ctx, uint8_t** out_data, size_t* out_size) {
 
 static bool json_init_read(void* ctx, const uint8_t* data, size_t size) {
   json_ctx_t* c = (json_ctx_t*)ctx;
+  c->read_depth = 0;
+  c->read_error = false;
   text_parse_init(&c->parse, (const char*)data, size);
   return true;
 }

@@ -41,6 +41,11 @@ Each function creates a new serializer instance. The caller must free it with `o
 
 Create a JSON text serializer.
 
+The object model has no null value and stores strings as NUL-terminated C
+strings. JSON `null` and strings or keys containing `\u0000` are therefore
+rejected when reading. Non-finite floating-point values are rejected when
+writing JSON. JSON containers may be nested up to 64 levels.
+
 **Signature:**
 ```c
 olib_serializer_t* olib_serializer_new_json_text();
@@ -69,6 +74,9 @@ olib_serializer_t* olib_serializer_new_json_binary();
 ### `olib_serializer_new_yaml`
 
 Create a YAML serializer.
+
+The serializer rejects non-finite floating-point values and control characters
+that it cannot represent in its supported YAML subset.
 
 **Signature:**
 ```c
@@ -108,6 +116,10 @@ olib_serializer_t* olib_serializer_new_xml();
 ### `olib_serializer_new_toml`
 
 Create a TOML serializer.
+
+The serializer supports unsigned integers through `UINT64_MAX` as an extension;
+some TOML consumers may only accept signed 64-bit integers. Non-finite
+floating-point values are rejected.
 
 **Signature:**
 ```c

@@ -324,7 +324,7 @@ static bool binary_read_bool(void* ctx, bool* value) {
   uint8_t tag;
   if (!binary_read_u8(c, &tag) || tag != BINARY_TAG_BOOL) return false;
   uint8_t b;
-  if (!binary_read_u8(c, &b)) return false;
+  if (!binary_read_u8(c, &b) || b > 1) return false;
   *value = (b != 0);
   return true;
 }

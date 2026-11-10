@@ -28,6 +28,7 @@ SOFTWARE.
 #include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
+#include <math.h>
 
 // #############################################################################
 // Context structure for text serialization
@@ -162,6 +163,7 @@ static bool text_write_uint(void* ctx, uint64_t value) {
 }
 
 static bool text_write_float(void* ctx, double value) {
+  if (!isfinite(value)) return false;
   text_ctx_t* c = (text_ctx_t*)ctx;
 
   if (c->in_list) {
@@ -180,7 +182,10 @@ static bool text_write_float(void* ctx, double value) {
   if (!text_write_key_prefix(c)) return false;
 
   char buf[64];
-  snprintf(buf, sizeof(buf), "%g", value);
+  snprintf(buf, sizeof(buf), "%.17g", value);
+  if (!strchr(buf, '.') && !strchr(buf, 'e') && !strchr(buf, 'E')) {
+    strcat(buf, ".0");
+  }
   return text_write_str(c, buf);
 }
 
@@ -366,7 +371,7 @@ static olib_object_type_t text_read_peek(void* ctx) {
     if (pos < p->size && (p->buffer[pos] == '.' || p->buffer[pos] == 'e' || p->buffer[pos] == 'E')) {
       return OLIB_OBJECT_TYPE_FLOAT;
     }
-    return OLIB_OBJECT_TYPE_INT;
+    return text_parse_integer_type(p, p->pos, pos);
   }
   if (ch == 't' || ch == 'f') {
     if (p->pos + 4 <= p->size && strncmp(p->buffer + p->pos, "true", 4) == 0) {

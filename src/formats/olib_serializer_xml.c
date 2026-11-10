@@ -28,6 +28,8 @@ SOFTWARE.
 #include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
+#include <errno.h>
+#include <math.h>
 
 // #############################################################################
 // Context structure for XML serialization
@@ -37,7 +39,8 @@ SOFTWARE.
 typedef struct {
   char tag_name[64];
   char type_attr[32];
-  char name_attr[128];
+  size_t name_attr_pos;
+  bool has_name_attr;
   char dims_attr[128];
   bool is_self_closing;
   bool is_closing_tag;
@@ -65,6 +68,10 @@ typedef struct {
 
   // Track container types for proper closing tags (stack indexed by indent level)
   xml_container_type_t container_stack[32];
+  bool parent_in_list[32];
+  bool parent_in_struct[32];
+  bool parent_list_first[32];
+  bool parent_struct_first[32];
   int container_depth;
 
   // Read mode (using shared parsing utilities)
@@ -120,9 +127,55 @@ static bool xml_write_indent(xml_ctx_t* ctx) {
   return true;
 }
 
+static bool xml_valid_character(uint32_t code) {
+  return code == 0x09 || code == 0x0a || code == 0x0d ||
+         (code >= 0x20 && code <= 0xd7ff) ||
+         (code >= 0xe000 && code <= 0xfffd) ||
+         (code >= 0x10000 && code <= 0x10ffff);
+}
+
+// XML 1.0 Char production on a UTF-8 encoded buffer. Check the whole input,
+// including attributes and text, so invalid bytes are never emitted or read.
+static bool xml_valid_characters(const uint8_t* data, size_t size) {
+  for (size_t pos = 0; pos < size;) {
+    uint32_t code = data[pos];
+    uint32_t minimum = 0;
+    size_t length = 1;
+    if (code < 0x80) {
+      // ASCII character.
+    } else if (code >= 0xc2 && code <= 0xdf) {
+      code &= 0x1f;
+      minimum = 0x80;
+      length = 2;
+    } else if (code >= 0xe0 && code <= 0xef) {
+      code &= 0x0f;
+      minimum = 0x800;
+      length = 3;
+    } else if (code >= 0xf0 && code <= 0xf4) {
+      code &= 0x07;
+      minimum = 0x10000;
+      length = 4;
+    } else {
+      return false;
+    }
+    if (length > size - pos) return false;
+    for (size_t i = 1; i < length; ++i) {
+      uint8_t byte = data[pos + i];
+      if ((byte & 0xc0) != 0x80) return false;
+      code = (code << 6) | (byte & 0x3f);
+    }
+    if (code < minimum || !xml_valid_character(code)) {
+      return false;
+    }
+    pos += length;
+  }
+  return true;
+}
+
 // Write XML-escaped string content (not the quotes, just the content)
-static bool xml_write_escaped(xml_ctx_t* ctx, const char* str) {
+static bool xml_write_escaped(xml_ctx_t* ctx, const char* str, bool attribute) {
   if (!str) return true;
+  if (!xml_valid_characters((const uint8_t*)str, strlen(str))) return false;
   for (const char* p = str; *p; p++) {
     switch (*p) {
       case '&':
@@ -139,6 +192,19 @@ static bool xml_write_escaped(xml_ctx_t* ctx, const char* str) {
         break;
       case '\'':
         if (!xml_write_str(ctx, "&apos;")) return false;
+        break;
+      case '\r':
+        if (!xml_write_str(ctx, "&#13;")) return false;
+        break;
+      case '\t':
+        if (attribute) {
+          if (!xml_write_str(ctx, "&#9;")) return false;
+        } else if (!xml_write_char(ctx, *p)) return false;
+        break;
+      case '\n':
+        if (attribute) {
+          if (!xml_write_str(ctx, "&#10;")) return false;
+        } else if (!xml_write_char(ctx, *p)) return false;
         break;
       default:
         if (!xml_write_char(ctx, *p)) return false;
@@ -172,7 +238,7 @@ static bool xml_write_close_tag(xml_ctx_t* ctx, const char* tag) {
 // Write a complete element like <tagname>value</tagname>
 static bool xml_write_element(xml_ctx_t* ctx, const char* tag, const char* value) {
   if (!xml_write_open_tag(ctx, tag)) return false;
-  if (!xml_write_escaped(ctx, value)) return false;
+  if (!xml_write_escaped(ctx, value, false)) return false;
   if (!xml_write_close_tag(ctx, tag)) return false;
   return true;
 }
@@ -182,7 +248,7 @@ static bool xml_write_struct_value_begin(xml_ctx_t* ctx, const char* type_tag) {
   if (ctx->in_struct && ctx->pending_key) {
     // Inside struct: <key name="field" type="int">value</key>
     if (!xml_write_str(ctx, "<key name=\"")) return false;
-    if (!xml_write_escaped(ctx, ctx->pending_key)) return false;
+    if (!xml_write_escaped(ctx, ctx->pending_key, true)) return false;
     if (!xml_write_str(ctx, "\" type=\"")) return false;
     if (!xml_write_str(ctx, type_tag)) return false;
     if (!xml_write_str(ctx, "\">")) return false;
@@ -293,7 +359,7 @@ static bool xml_write_float(void* ctx, double value) {
   if (!xml_write_struct_value_begin(c, "float")) return false;
 
   char buf[64];
-  snprintf(buf, sizeof(buf), "%g", value);
+  snprintf(buf, sizeof(buf), "%.17g", value);
   if (!xml_write_str(c, buf)) return false;
 
   if (!xml_write_struct_value_end(c, "float")) return false;
@@ -318,7 +384,7 @@ static bool xml_write_string(void* ctx, const char* value) {
   }
 
   if (!xml_write_struct_value_begin(c, "string")) return false;
-  if (!xml_write_escaped(c, value)) return false;
+  if (!xml_write_escaped(c, value, false)) return false;
   if (!xml_write_struct_value_end(c, "string")) return false;
   return true;
 }
@@ -349,6 +415,7 @@ static bool xml_write_bool(void* ctx, bool value) {
 static bool xml_write_list_begin(void* ctx, size_t size) {
   (void)size;
   xml_ctx_t* c = (xml_ctx_t*)ctx;
+  if (c->container_depth >= 32) return false;
 
   if (c->in_list) {
     if (!c->list_first_item) {
@@ -370,7 +437,7 @@ static bool xml_write_list_begin(void* ctx, size_t size) {
   // Handle struct key for nested containers
   if (c->in_struct && c->pending_key) {
     if (!xml_write_str(c, "<key name=\"")) return false;
-    if (!xml_write_escaped(c, c->pending_key)) return false;
+    if (!xml_write_escaped(c, c->pending_key, true)) return false;
     if (!xml_write_str(c, "\" type=\"list\">")) return false;
     c->pending_key = NULL;
     container_type = XML_CONTAINER_KEY;
@@ -382,14 +449,18 @@ static bool xml_write_list_begin(void* ctx, size_t size) {
     container_type = XML_CONTAINER_STANDALONE;
   }
 
-  // Push container type onto stack
-  if (c->container_depth < 32) {
-    c->container_stack[c->container_depth++] = container_type;
-  }
+  // Preserve the parent context while visiting the nested container.
+  int depth = c->container_depth++;
+  c->container_stack[depth] = container_type;
+  c->parent_in_list[depth] = c->in_list;
+  c->parent_in_struct[depth] = c->in_struct;
+  c->parent_list_first[depth] = c->list_first_item;
+  c->parent_struct_first[depth] = c->struct_first_item;
 
   if (!xml_write_char(c, '\n')) return false;
   c->indent_level++;
   c->in_list = true;
+  c->in_struct = false;
   c->list_first_item = true;
   return true;
 }
@@ -399,8 +470,6 @@ static bool xml_write_list_end(void* ctx) {
   c->indent_level--;
   if (!xml_write_char(c, '\n')) return false;
   if (!xml_write_indent(c)) return false;
-
-  c->in_list = false;
 
   // Pop container type and write matching closing tag
   xml_container_type_t container_type = XML_CONTAINER_STANDALONE;
@@ -421,11 +490,17 @@ static bool xml_write_list_end(void* ctx) {
       break;
   }
 
+  c->in_list = c->parent_in_list[c->container_depth];
+  c->in_struct = c->parent_in_struct[c->container_depth];
+  c->list_first_item = c->parent_list_first[c->container_depth];
+  c->struct_first_item = c->parent_struct_first[c->container_depth];
+
   return true;
 }
 
 static bool xml_write_struct_begin(void* ctx) {
   xml_ctx_t* c = (xml_ctx_t*)ctx;
+  if (c->container_depth >= 32) return false;
 
   if (c->in_list) {
     if (!c->list_first_item) {
@@ -447,7 +522,7 @@ static bool xml_write_struct_begin(void* ctx) {
   // Handle struct key for nested containers
   if (c->in_struct && c->pending_key) {
     if (!xml_write_str(c, "<key name=\"")) return false;
-    if (!xml_write_escaped(c, c->pending_key)) return false;
+    if (!xml_write_escaped(c, c->pending_key, true)) return false;
     if (!xml_write_str(c, "\" type=\"struct\">")) return false;
     c->pending_key = NULL;
     container_type = XML_CONTAINER_KEY;
@@ -459,13 +534,17 @@ static bool xml_write_struct_begin(void* ctx) {
     container_type = XML_CONTAINER_STANDALONE;
   }
 
-  // Push container type onto stack
-  if (c->container_depth < 32) {
-    c->container_stack[c->container_depth++] = container_type;
-  }
+  // Preserve the parent context while visiting the nested container.
+  int depth = c->container_depth++;
+  c->container_stack[depth] = container_type;
+  c->parent_in_list[depth] = c->in_list;
+  c->parent_in_struct[depth] = c->in_struct;
+  c->parent_list_first[depth] = c->list_first_item;
+  c->parent_struct_first[depth] = c->struct_first_item;
 
   if (!xml_write_char(c, '\n')) return false;
   c->indent_level++;
+  c->in_list = false;
   c->in_struct = true;
   c->struct_first_item = true;
   return true;
@@ -502,7 +581,10 @@ static bool xml_write_struct_end(void* ctx) {
       break;
   }
 
-  c->in_struct = (c->indent_level > 0);
+  c->in_list = c->parent_in_list[c->container_depth];
+  c->in_struct = c->parent_in_struct[c->container_depth];
+  c->list_first_item = c->parent_list_first[c->container_depth];
+  c->struct_first_item = c->parent_struct_first[c->container_depth];
   return true;
 }
 
@@ -582,6 +664,68 @@ static const char* xml_parse_tag_name(text_parse_ctx_t* p) {
   return p->temp_string;
 }
 
+// Decode predefined XML entities and decimal/hexadecimal character references.
+// Decoding cannot expand beyond the encoded source length.
+static const char* xml_decode_entities(text_parse_ctx_t* p, size_t start, size_t len) {
+  if (!text_parse_ensure_temp(p, len)) return NULL;
+  const char* input = p->buffer + start;
+  size_t out = 0;
+  for (size_t i = 0; i < len;) {
+    if (input[i] != '&') {
+      p->temp_string[out++] = input[i++];
+      continue;
+    }
+    uint32_t code = 0;
+    size_t end = i;
+    while (end < len && input[end] != ';') end++;
+    if (end == len) return NULL;
+    size_t entity_len = end - i + 1;
+    if (entity_len == 4 && memcmp(input + i, "&lt;", 4) == 0) code = '<';
+    else if (entity_len == 4 && memcmp(input + i, "&gt;", 4) == 0) code = '>';
+    else if (entity_len == 5 && memcmp(input + i, "&amp;", 5) == 0) code = '&';
+    else if (entity_len == 6 && memcmp(input + i, "&quot;", 6) == 0) code = '"';
+    else if (entity_len == 6 && memcmp(input + i, "&apos;", 6) == 0) code = '\'';
+    else if (i + 2 < end && input[i + 1] == '#') {
+      size_t digit_pos = i + 2;
+      unsigned int base = 10;
+      if (input[digit_pos] == 'x') {
+        base = 16;
+        digit_pos++;
+      }
+      if (digit_pos == end) return NULL;
+      for (; digit_pos < end; digit_pos++) {
+        unsigned int digit;
+        char ch = input[digit_pos];
+        if (ch >= '0' && ch <= '9') digit = (unsigned int)(ch - '0');
+        else if (base == 16 && ch >= 'a' && ch <= 'f') digit = (unsigned int)(ch - 'a' + 10);
+        else if (base == 16 && ch >= 'A' && ch <= 'F') digit = (unsigned int)(ch - 'A' + 10);
+        else return NULL;
+        if (digit >= base || code > (0x10ffffu - digit) / base) return NULL;
+        code = code * base + digit;
+      }
+    } else return NULL;
+    if (!xml_valid_character(code)) return NULL;
+    if (code < 0x80) {
+      p->temp_string[out++] = (char)code;
+    } else if (code < 0x800) {
+      p->temp_string[out++] = (char)(0xc0 | (code >> 6));
+      p->temp_string[out++] = (char)(0x80 | (code & 0x3f));
+    } else if (code < 0x10000) {
+      p->temp_string[out++] = (char)(0xe0 | (code >> 12));
+      p->temp_string[out++] = (char)(0x80 | ((code >> 6) & 0x3f));
+      p->temp_string[out++] = (char)(0x80 | (code & 0x3f));
+    } else {
+      p->temp_string[out++] = (char)(0xf0 | (code >> 18));
+      p->temp_string[out++] = (char)(0x80 | ((code >> 12) & 0x3f));
+      p->temp_string[out++] = (char)(0x80 | ((code >> 6) & 0x3f));
+      p->temp_string[out++] = (char)(0x80 | (code & 0x3f));
+    }
+    i = end + 1;
+  }
+  p->temp_string[out] = '\0';
+  return p->temp_string;
+}
+
 // Parse attribute value (after the = sign, handles quotes)
 static const char* xml_parse_attribute_value(text_parse_ctx_t* p) {
   xml_parse_skip_whitespace(p);
@@ -600,36 +744,7 @@ static const char* xml_parse_attribute_value(text_parse_ctx_t* p) {
   if (p->pos >= p->size) return NULL;
   p->pos++; // Skip closing quote
 
-  // Unescape XML entities
-  if (!text_parse_ensure_temp(p, len + 1)) return NULL;
-
-  size_t out = 0;
-  for (size_t i = start; i < start + len; i++) {
-    if (p->buffer[i] == '&') {
-      if (i + 4 <= start + len && strncmp(p->buffer + i, "&lt;", 4) == 0) {
-        p->temp_string[out++] = '<';
-        i += 3;
-      } else if (i + 4 <= start + len && strncmp(p->buffer + i, "&gt;", 4) == 0) {
-        p->temp_string[out++] = '>';
-        i += 3;
-      } else if (i + 5 <= start + len && strncmp(p->buffer + i, "&amp;", 5) == 0) {
-        p->temp_string[out++] = '&';
-        i += 4;
-      } else if (i + 6 <= start + len && strncmp(p->buffer + i, "&quot;", 6) == 0) {
-        p->temp_string[out++] = '"';
-        i += 5;
-      } else if (i + 6 <= start + len && strncmp(p->buffer + i, "&apos;", 6) == 0) {
-        p->temp_string[out++] = '\'';
-        i += 5;
-      } else {
-        p->temp_string[out++] = p->buffer[i];
-      }
-    } else {
-      p->temp_string[out++] = p->buffer[i];
-    }
-  }
-  p->temp_string[out] = '\0';
-  return p->temp_string;
+  return xml_decode_entities(p, start, len);
 }
 
 // Parse an XML tag and extract attributes
@@ -685,13 +800,15 @@ static bool xml_parse_tag(text_parse_ctx_t* p, xml_tag_info_t* info) {
     if (p->pos >= p->size || p->buffer[p->pos] != '=') continue;
     p->pos++;
 
+    size_t attr_value_pos = p->pos;
     const char* attr_value = xml_parse_attribute_value(p);
-    if (!attr_value) continue;
+    if (!attr_value) return false;
 
     if (strcmp(attr_name_copy, "type") == 0) {
       strncpy(info->type_attr, attr_value, sizeof(info->type_attr) - 1);
     } else if (strcmp(attr_name_copy, "name") == 0) {
-      strncpy(info->name_attr, attr_value, sizeof(info->name_attr) - 1);
+      info->has_name_attr = true;
+      info->name_attr_pos = attr_value_pos;
     } else if (strcmp(attr_name_copy, "dims") == 0) {
       strncpy(info->dims_attr, attr_value, sizeof(info->dims_attr) - 1);
     }
@@ -709,37 +826,7 @@ static const char* xml_parse_text_content(text_parse_ctx_t* p) {
     p->pos++;
   }
 
-  size_t len = p->pos - start;
-  if (!text_parse_ensure_temp(p, len + 1)) return NULL;
-
-  // Unescape XML entities
-  size_t out = 0;
-  for (size_t i = start; i < start + len; i++) {
-    if (p->buffer[i] == '&') {
-      if (i + 4 <= start + len && strncmp(p->buffer + i, "&lt;", 4) == 0) {
-        p->temp_string[out++] = '<';
-        i += 3;
-      } else if (i + 4 <= start + len && strncmp(p->buffer + i, "&gt;", 4) == 0) {
-        p->temp_string[out++] = '>';
-        i += 3;
-      } else if (i + 5 <= start + len && strncmp(p->buffer + i, "&amp;", 5) == 0) {
-        p->temp_string[out++] = '&';
-        i += 4;
-      } else if (i + 6 <= start + len && strncmp(p->buffer + i, "&quot;", 6) == 0) {
-        p->temp_string[out++] = '"';
-        i += 5;
-      } else if (i + 6 <= start + len && strncmp(p->buffer + i, "&apos;", 6) == 0) {
-        p->temp_string[out++] = '\'';
-        i += 5;
-      } else {
-        p->temp_string[out++] = p->buffer[i];
-      }
-    } else {
-      p->temp_string[out++] = p->buffer[i];
-    }
-  }
-  p->temp_string[out] = '\0';
-  return p->temp_string;
+  return xml_decode_entities(p, start, p->pos - start);
 }
 
 // Skip to after a closing tag
@@ -822,6 +909,11 @@ static olib_object_type_t xml_read_peek(void* ctx) {
   return xml_get_type_from_tag(&info);
 }
 
+static bool xml_numeric_tail_empty(const char* tail) {
+  while (*tail == ' ' || *tail == '\t' || *tail == '\n' || *tail == '\r') tail++;
+  return *tail == '\0';
+}
+
 static bool xml_read_int(void* ctx, int64_t* value) {
   xml_ctx_t* c = (xml_ctx_t*)ctx;
   text_parse_ctx_t* p = &c->parse;
@@ -840,16 +932,17 @@ static bool xml_read_int(void* ctx, int64_t* value) {
   const char* content = xml_parse_text_content(p);
   if (!content) return false;
 
-  // Make a copy before parsing closing tag
-  char content_copy[128];
-  strncpy(content_copy, content, sizeof(content_copy) - 1);
-  content_copy[sizeof(content_copy) - 1] = '\0';
+  errno = 0;
+  char* end;
+  long long parsed = strtoll(content, &end, 10);
+  if (end == content || errno == ERANGE || parsed < INT64_MIN || parsed > INT64_MAX ||
+      !xml_numeric_tail_empty(end)) return false;
 
   // Skip closing tag
   xml_tag_info_t close_info;
-  xml_parse_tag(p, &close_info);
+  if (!xml_parse_tag(p, &close_info) || !close_info.is_closing_tag) return false;
 
-  *value = strtoll(content_copy, NULL, 10);
+  *value = (int64_t)parsed;
   return true;
 }
 
@@ -869,15 +962,19 @@ static bool xml_read_uint(void* ctx, uint64_t* value) {
   const char* content = xml_parse_text_content(p);
   if (!content) return false;
 
-  char content_copy[128];
-  strncpy(content_copy, content, sizeof(content_copy) - 1);
-  content_copy[sizeof(content_copy) - 1] = '\0';
+  while (*content == ' ' || *content == '\t' || *content == '\n' || *content == '\r') content++;
+  if (*content == '-') return false;
+  errno = 0;
+  char* end;
+  unsigned long long parsed = strtoull(content, &end, 10);
+  if (end == content || errno == ERANGE || parsed > UINT64_MAX ||
+      !xml_numeric_tail_empty(end)) return false;
 
   // Skip closing tag
   xml_tag_info_t close_info;
-  xml_parse_tag(p, &close_info);
+  if (!xml_parse_tag(p, &close_info) || !close_info.is_closing_tag) return false;
 
-  *value = strtoull(content_copy, NULL, 10);
+  *value = (uint64_t)parsed;
   return true;
 }
 
@@ -897,15 +994,17 @@ static bool xml_read_float(void* ctx, double* value) {
   const char* content = xml_parse_text_content(p);
   if (!content) return false;
 
-  char content_copy[128];
-  strncpy(content_copy, content, sizeof(content_copy) - 1);
-  content_copy[sizeof(content_copy) - 1] = '\0';
+  errno = 0;
+  char* end;
+  double parsed = strtod(content, &end);
+  if (end == content || !xml_numeric_tail_empty(end) ||
+      (errno == ERANGE && (parsed == 0.0 || isinf(parsed)))) return false;
 
   // Skip closing tag
   xml_tag_info_t close_info;
-  xml_parse_tag(p, &close_info);
+  if (!xml_parse_tag(p, &close_info) || !close_info.is_closing_tag) return false;
 
-  *value = strtod(content_copy, NULL);
+  *value = parsed;
   return true;
 }
 
@@ -969,26 +1068,17 @@ static bool xml_read_bool(void* ctx, bool* value) {
   const char* content = xml_parse_text_content(p);
   if (!content) return false;
 
-  char content_copy[32];
-  strncpy(content_copy, content, sizeof(content_copy) - 1);
-  content_copy[sizeof(content_copy) - 1] = '\0';
+  while (*content == ' ' || *content == '\t' || *content == '\n' || *content == '\r') content++;
+  bool parsed;
+  if (strncmp(content, "true", 4) == 0 && xml_numeric_tail_empty(content + 4)) parsed = true;
+  else if (strncmp(content, "false", 5) == 0 && xml_numeric_tail_empty(content + 5)) parsed = false;
+  else if (content[0] == '1' && xml_numeric_tail_empty(content + 1)) parsed = true;
+  else if (content[0] == '0' && xml_numeric_tail_empty(content + 1)) parsed = false;
+  else return false;
 
-  // Skip closing tag
   xml_tag_info_t close_info;
-  xml_parse_tag(p, &close_info);
-
-  // Trim whitespace
-  char* s = content_copy;
-  while (*s == ' ' || *s == '\t' || *s == '\n' || *s == '\r') s++;
-  char* e = s + strlen(s) - 1;
-  while (e > s && (*e == ' ' || *e == '\t' || *e == '\n' || *e == '\r')) e--;
-  *(e + 1) = '\0';
-
-  if (strcmp(s, "true") == 0 || strcmp(s, "1") == 0) {
-    *value = true;
-  } else {
-    *value = false;
-  }
+  if (!xml_parse_tag(p, &close_info) || !close_info.is_closing_tag) return false;
+  *value = parsed;
   return true;
 }
 
@@ -1090,14 +1180,20 @@ static bool xml_read_struct_key(void* ctx, const char** key) {
   // For struct keys, we need to peek at the tag
   if (!xml_parse_tag(p, &info)) return false;
 
-  // Use name attribute if present, otherwise use tag name as the key
-  const char* key_source = info.name_attr[0] ? info.name_attr : info.tag_name;
-  
-  // Make a copy of the key
-  size_t len = strlen(key_source);
-  if (!text_parse_ensure_temp(p, len + 1)) return false;
-  strcpy(p->temp_string, key_source);
-  *key = p->temp_string;
+  // Attribute values can be arbitrarily long. Decode the name again into the
+  // parser's temporary buffer rather than truncating it in the tag metadata.
+  if (info.has_name_attr) {
+    size_t value_pos = p->pos;
+    p->pos = info.name_attr_pos;
+    *key = xml_parse_attribute_value(p);
+    p->pos = value_pos;
+    if (!*key) return false;
+  } else {
+    size_t len = strlen(info.tag_name);
+    if (!text_parse_ensure_temp(p, len + 1)) return false;
+    strcpy(p->temp_string, info.tag_name);
+    *key = p->temp_string;
+  }
 
   // Store the complete tag info and type for value reading
   c->pending_tag_info = info;
@@ -1179,6 +1275,7 @@ static bool xml_finish_write(void* ctx, uint8_t** out_data, size_t* out_size) {
 
 static bool xml_init_read(void* ctx, const uint8_t* data, size_t size) {
   xml_ctx_t* c = (xml_ctx_t*)ctx;
+  if (!xml_valid_characters(data, size)) return false;
   text_parse_init(&c->parse, (const char*)data, size);
 
   // Initialize read state
